@@ -32,7 +32,7 @@ pip install -e .
 
 To run the client, use the following structure:```aquilax <command> [options]```The Aquilax API Client supports the following commands:- org: Create an organization.- group: Create a group within an organization.- scan: Start a scan for a specific group.- get-scan-details: Retrieve details of a specific scan.
 
-###**Command: org**
+### **Command: org**
 > Creates a new organization with specified details.
 
 **Options**: --name (required): The name of the organization.--description (optional, default: "Social Media"): A brief description of the organization.--business-name (optional, default: "MenDoFeel Technologies"): The business name associated with the organization.--website (optional, default: "mendofeel.com"): The organization's website URL.--org-pic (optional, default: a predefined image URL): The URL of the organization's picture.--usage (optional, default: "Business"): The usage type for the organization.
