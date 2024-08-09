@@ -76,9 +76,9 @@ export AQUILAX_AUTH=aquilax_api_token_here
 ```
 
 ### Command-Line Arguments
-- --orgName: The name of the organization to create.
-- --groupName: The name of the group to create within the organization.
-- --gitUri: The Git URI of the repository to scan.
+- aquilax org --name: The name of the organization to create.
+- aquilax group --name: The name of the group to create within the organization.
+- aquilax --gitUri: The Git URI of the repository to scan.
 
 ## Running the Client for Development
 To run the client while developing:
