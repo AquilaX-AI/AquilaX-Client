@@ -65,7 +65,7 @@ aquilax scan --org-id "org123" --group-id "group456" --git-uri "https://github.c
 
 **Options:** --org-id (required): The ID of the organization.--group-id (required): The ID of the group.--project-id (required): The ID of the project.--scan-id (required): The ID of the scan.
 ```bash
-**Example Usage:**aquilax get-scan-details --org-id "org123" --group-id "group456" --project-id "proj789" --scan-id "scan101"
+aquilax get-scan-details --org-id "org123" --group-id "group456" --project-id "proj789" --scan-id "scan101"
 ```
 
 ## Environment Variable
