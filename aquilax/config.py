@@ -3,7 +3,7 @@ import os
 class ClientConfig:
     _config = {
         'apiToken': os.getenv('AQUILAX_AUTH', ''),
-        'baseUrl': 'https://app.aquilax.ai/',
+        'baseUrl': 'https://app.aquilax.ai',
         'baseApiPath': '/api/v1',
     }
 

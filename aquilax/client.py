@@ -5,12 +5,12 @@ from .logger import logger
 
 class APIClient:
     def __init__(self):
-        self.base_url = f"{ClientConfig.get('baseUrl')}{ClientConfig.get('baseApiPath')}"
+        self.base_url = f"{ClientConfig.get('baseUrl').rstrip('/')}{ClientConfig.get('baseApiPath')}"
         self.api_token = ClientConfig.get('apiToken')
         if not self.api_token:
             raise ValueError('API Token is required.')
         self.headers = {
-            'Cookie': f"AQUILAX-AUTH={self.api_token}",
+            'X-AX-Key': f"{self.api_token}",
         }
 
     def create_organization(self, org_name, description, business_name, website, org_pic=None, usage='Business'):
