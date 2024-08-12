@@ -42,6 +42,17 @@ def main():
     get_scan_details_parser.add_argument('--project-id', required=True, help='Project ID')
     get_scan_details_parser.add_argument('--scan-id', required=True, help='Scan ID')
 
+    # Get All Organizations command
+    get_orgs_parser = subparsers.add_parser('get-orgs', help='Get all organizations')
+
+    # Get All Groups command
+    get_groups_parser = subparsers.add_parser('get-groups', help='Get all groups for an organization')
+    get_groups_parser.add_argument('--org-id', required=True, help='Organization ID')
+
+    # Get All Scans command
+    get_scans_parser = subparsers.add_parser('get-scans', help='Get all scans for an organization')
+    get_scans_parser.add_argument('--org-id', required=True, help='Organization ID')
+
     args = parser.parse_args()
 
     client = APIClient()
@@ -76,6 +87,21 @@ def main():
             # Get Scan Details
             scan_details = client.get_scan_by_id(args.org_id, args.group_id, args.project_id, args.scan_id)
             logger.info(f"Scan Details: {scan_details}")
+
+        elif args.command == 'get-orgs':
+            # Get All Organizations
+            orgs_response = client.get_all_orgs()
+            logger.info(f"Organizations: {orgs_response}")
+
+        elif args.command == 'get-groups':
+            # Get All Groups
+            groups_response = client.get_all_groups(args.org_id)
+            logger.info(f"Groups for Organization {args.org_id}: {groups_response}")
+
+        elif args.command == 'get-scans':
+            # Get All Scans
+            scans_response = client.get_all_scans(args.org_id)
+            logger.info(f"Scans for Organization {args.org_id}: {scans_response}")
 
     except Exception as e:
         logger.error(f"Error occurred: {str(e)}")

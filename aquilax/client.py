@@ -71,3 +71,24 @@ class APIClient:
         response = requests.get(f"{self.base_url}/organization/{org_id}/group/{group_id}/project/{project_id}/scan/{scan_id}", headers=headers)
         response.raise_for_status()
         return response.json()
+
+    def get_all_orgs(self):
+        headers = self.headers.copy()
+        logger.info("Retrieving all organizations.")
+        response = requests.get(f"{self.base_url}/organization", headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+    def get_all_groups(self, org_id):
+        headers = self.headers.copy()
+        logger.info(f"Retrieving all groups for organization ID {org_id}.")
+        response = requests.get(f"{self.base_url}/organization/{org_id}/group", headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+    def get_all_scans(self, org_id):
+        headers = self.headers.copy()
+        logger.info(f"Retrieving all scans for organization ID {org_id}.")
+        response = requests.get(f"{self.base_url}/organization/{org_id}/scans", headers=headers)
+        response.raise_for_status()
+        return response.json()
