@@ -1,6 +1,5 @@
 import argparse
-import time
-import requests
+import sys
 from aquilax.client import APIClient
 from aquilax.logger import logger
 
@@ -55,9 +54,13 @@ def main():
 
     args = parser.parse_args()
 
-    client = APIClient()
+    if not args.command:
+        parser.print_help()
+        return
 
     try:
+        client = APIClient()
+
         if args.command == 'org':
             # Create Organization
             org_response = client.create_organization(
@@ -91,7 +94,21 @@ def main():
         elif args.command == 'get-orgs':
             # Get All Organizations
             orgs_response = client.get_all_orgs()
-            logger.info(f"Organizations: {orgs_response}")
+            
+            if not orgs_response.get('orgs', []):
+                print("No organizations found.")
+                return
+
+            print("\nOrganizations List:")
+            print(f"{'Organization Name':<30} {'Organization ID':<40} {'Number of Groups':<20}")
+            print("="*90)
+            for org in orgs_response.get('orgs', []):
+                org_id = org.get('_id')
+                org_name = org.get('name').strip()
+                group_count = len(client.get_all_groups(org_id).get('groups', []))
+                print(f"{org_name:<30} {org_id:<40} {group_count:<20}")
+
+            print("\nTotal Organizations: ", len(orgs_response.get('orgs', [])))
 
         elif args.command == 'get-groups':
             # Get All Groups
@@ -102,6 +119,9 @@ def main():
             # Get All Scans
             scans_response = client.get_all_scans(args.org_id)
             logger.info(f"Scans for Organization {args.org_id}: {scans_response}")
+
+    except ValueError as ve:
+        print(ve)
 
     except Exception as e:
         logger.error(f"Error occurred: {str(e)}")

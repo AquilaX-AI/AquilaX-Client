@@ -8,10 +8,16 @@ class APIClient:
         self.base_url = f"{ClientConfig.get('baseUrl').rstrip('/')}{ClientConfig.get('baseApiPath')}"
         self.api_token = ClientConfig.get('apiToken')
         if not self.api_token:
+            self.suggest_token_setup()
             raise ValueError('API Token is required.')
         self.headers = {
             'X-AX-Key': f"{self.api_token}",
         }
+
+    def suggest_token_setup(self):
+        print("API Token is not set or is invalid.")
+        print("Please ensure you have set the API token in your environment variables as 'export AQUILAX_AUTH'.")
+        print("If you don't have an API token, please visit https://app.aquilax.ai to generate one.")
 
     def create_organization(self, org_name, description, business_name, website, org_pic=None, usage='Business'):
         default_org_pic = "https://i.pinimg.com/236x/a2/c2/64/a2c264977d561691c1ece4921704ae91.jpg"
@@ -80,9 +86,9 @@ class APIClient:
         return response.json()
 
     def get_all_groups(self, org_id):
-        headers = self.headers.copy()
-        logger.info(f"Retrieving all groups for organization ID {org_id}.")
-        response = requests.get(f"{self.base_url}/organization/{org_id}/group", headers=headers)
+        # headers = self.headers.copy()
+        # logger.info(f"Retrieving all groups for organization ID {org_id}.")
+        response = requests.get(f"{self.base_url}/organization/{org_id}/group", headers=self.headers)
         response.raise_for_status()
         return response.json()
 
