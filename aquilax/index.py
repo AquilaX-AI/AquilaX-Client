@@ -113,12 +113,49 @@ def main():
         elif args.command == 'get-groups':
             # Get All Groups
             groups_response = client.get_all_groups(args.org_id)
-            logger.info(f"Groups for Organization {args.org_id}: {groups_response}")
+            groups = groups_response.get('groups', [])
+            
+            if not groups:
+                print("No groups found for this organization.")
+                return
+            
+            print("\nGroups List for Organization ID:", args.org_id)
+            print(f"{'Group Name':<20} {'Group ID':<40} {'Description':<30} {'Tags':<20}")
+            print("="*110)
+            
+            for group in groups:
+                group_name = group.get('name', 'N/A')
+                group_id = group.get('_id', 'N/A')
+                description = group.get('description', 'N/A')
+                tags = ', '.join(group.get('tags', []))
+                
+                print(f"{group_name:<20} {group_id:<40} {description:<30} {tags:<20}")
+            
+            print("\nTotal Groups: ", len(groups))
 
         elif args.command == 'get-scans':
             # Get All Scans
             scans_response = client.get_all_scans(args.org_id)
-            logger.info(f"Scans for Organization {args.org_id}: {scans_response}")
+            scans = scans_response.get('all_scans', [])
+            
+            if not scans:
+                print("No scans found for this organization.")
+                return
+            
+            print("\nScans List for Organization ID:", args.org_id)
+            print(f"{'Scan ID':<20} {'Group ID':<40} {'Project ID':<40} {'Status':<15} {'Created At':<25}")
+            print("="*140)
+            
+            for scan in scans:
+                scan_id = scan.get('id', 'N/A')
+                group_id = scan.get('group', 'N/A')
+                project_id = scan.get('project', 'N/A')
+                status = scan.get('status', 'N/A')
+                created_at = scan.get('created_at', 'N/A')
+                
+                print(f"{scan_id:<20} {group_id:<40} {project_id:<40} {status:<15} {created_at:<25}")
+            
+            print("\nTotal Scans: ", len(scans))
 
     except ValueError as ve:
         print(ve)
