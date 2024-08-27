@@ -100,15 +100,12 @@ def main():
                 return
 
             print("\nOrganizations List:")
-            print(f"{'Organization Name':<30} {'Organization ID':<40} {'Number of Groups':<20}")
-            print("="*90)
+            print(f"{'Organization Name':<30} {'Organization ID':<40}")
+            print("="*70)
             for org in orgs_response.get('orgs', []):
                 org_id = org.get('_id')
                 org_name = org.get('name').strip()
-                group_count = len(client.get_all_groups(org_id).get('groups', []))
-                print(f"{org_name:<30} {org_id:<40} {group_count:<20}")
-
-            print("\nTotal Organizations: ", len(orgs_response.get('orgs', [])))
+                print(f"{org_name:<30} {org_id:<40}")
 
         elif args.command == 'get-groups':
             # Get All Groups
@@ -131,8 +128,6 @@ def main():
                 
                 print(f"{group_name:<20} {group_id:<40} {description:<30} {tags:<20}")
             
-            print("\nTotal Groups: ", len(groups))
-
         elif args.command == 'get-scans':
             # Get All Scans
             scans_response = client.get_all_scans(args.org_id)
@@ -155,8 +150,6 @@ def main():
                 
                 print(f"{scan_id:<20} {group_id:<40} {project_id:<40} {status:<15} {created_at:<25}")
             
-            print("\nTotal Scans: ", len(scans))
-
     except ValueError as ve:
         print(ve)
 
