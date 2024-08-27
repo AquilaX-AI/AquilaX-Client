@@ -106,6 +106,7 @@ def main():
                 org_id = org.get('_id')
                 org_name = org.get('name').strip()
                 print(f"{org_name:<30} {org_id:<40}")
+            print("\n\n")
 
         elif args.command == 'get-groups':
             # Get All Groups
@@ -127,7 +128,8 @@ def main():
                 tags = ', '.join(group.get('tags', []))
                 
                 print(f"{group_name:<20} {group_id:<40} {description:<30} {tags:<20}")
-            
+            print("\n\n")
+
         elif args.command == 'get-scans':
             # Get All Scans
             scans_response = client.get_all_scans(args.org_id)
@@ -149,7 +151,8 @@ def main():
                 created_at = scan.get('created_at', 'N/A')
                 
                 print(f"{scan_id:<20} {group_id:<40} {project_id:<40} {status:<15} {created_at:<25}")
-            
+            print("\n\n")
+
     except ValueError as ve:
         print(ve)
 

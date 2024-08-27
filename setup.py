@@ -6,7 +6,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name='aquilax',
-    version='1.1.3',
+    version='1.1.4',
     packages=find_packages(),
     install_requires=[
         'requests',
