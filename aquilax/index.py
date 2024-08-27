@@ -51,6 +51,7 @@ def main():
     # Get All Scans command
     get_scans_parser = subparsers.add_parser('get-scans', help='Get all scans for an organization')
     get_scans_parser.add_argument('--org-id', required=True, help='Organization ID')
+    get_scans_parser.add_argument('--page', type=int, default=1, help='Page number to retrieve (default is 1)')
 
     args = parser.parse_args()
 
@@ -132,14 +133,14 @@ def main():
 
         elif args.command == 'get-scans':
             # Get All Scans
-            scans_response = client.get_all_scans(args.org_id)
+            scans_response = client.get_all_scans(args.org_id, page=args.page)
             scans = scans_response.get('all_scans', [])
             
             if not scans:
-                print("No scans found for this organization.")
+                print(f"No scans found for organization ID '{args.org_id}'.")
                 return
             
-            print("\nScans List for Organization ID:", args.org_id)
+            print(f"\nScans List for Organization ID: {args.org_id}")
             print(f"{'Scan ID':<20} {'Group ID':<40} {'Project ID':<40} {'Status':<15} {'Created At':<25}")
             print("="*140)
             

@@ -92,9 +92,14 @@ class APIClient:
         response.raise_for_status()
         return response.json()
 
-    def get_all_scans(self, org_id):
+    def get_all_scans(self, org_id, page=1):
         headers = self.headers.copy()
-        logger.info(f"Retrieving all scans for organization ID {org_id}.")
-        response = requests.get(f"{self.base_url}/organization/{org_id}/scans", headers=headers)
+        limit = 25 
+        params = {
+            'limit': limit,
+            'page': page
+        }
+        
+        response = requests.get(f"{self.base_url}/organization/{org_id}/scans", headers=headers, params=params)
         response.raise_for_status()
         return response.json()
