@@ -9,6 +9,9 @@ jobs:
   bump-version:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write 
+
     steps:
     - name: Check out the repository
       uses: actions/checkout@v2
@@ -31,13 +34,11 @@ jobs:
     - name: Bump version
       run: |
         bump2version patch --current-version $(cat VERSION) --new-version $(python -c "import sys; v = sys.argv[1].split('.'); v[-1] = str(int(v[-1]) + 1); print('.'.join(v))" $(cat VERSION)) VERSION
-      env:
-        VERSION: $(cat VERSION)
 
     - name: Push version bump
       uses: ad-m/github-push-action@v0.6.0
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        github_token: ${{ secrets.ORG_GH_TOKEN }}  
         branch: main
         tags: true
 
@@ -66,6 +67,6 @@ jobs:
     - name: Publish to PyPI
       env:
         TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}  
       run: |
         python -m twine upload dist/*
