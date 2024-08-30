@@ -33,9 +33,14 @@ jobs:
 
     - name: Bump version
       run: |
-        bump2version patch --current-version $(cat VERSION) --new-version $(python -c "import sys; v = sys.argv[1].split('.'); v[-1] = str(int(v[-1]) + 1); print('.'.join(v))" $(cat VERSION)) VERSION
-      env:
-        VERSION: $(cat VERSION)
+        current_version=$(cat VERSION)
+        new_version=$(python -c "import sys; v = sys.argv[1].split('.'); v[-1] = str(int(v[-1]) + 1); print('.'.join(v))" $current_version)
+        echo "Current version: $current_version"
+        echo "New version: $new_version"
+        echo $new_version > VERSION
+        git add VERSION
+        git commit -m "Bump version to $new_version"
+        git tag -a "v$new_version" -m "Release $new_version"
 
     - name: Push version bump
       uses: ad-m/github-push-action@v0.6.0
