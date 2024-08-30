@@ -31,6 +31,11 @@ jobs:
         git config --global user.email "mdomerkhan8000@gmail.com"
         git config --global user.name "Novamok"
 
+    - name: Fetch tags and pull latest changes
+      run: |
+        git fetch --tags
+        git pull
+
     - name: Bump version
       run: |
         current_version=$(cat VERSION)
@@ -42,12 +47,14 @@ jobs:
         git commit -m "Bump version to $new_version"
         git tag -a "v$new_version" -m "Release $new_version"
 
-    - name: Push version bump
+    - name: Push version bump and tags
       uses: ad-m/github-push-action@v0.6.0
       with:
         github_token: ${{ secrets.ORG_GH_TOKEN }}  
         branch: main
         tags: true
+      env:
+        GIT_PUSH_FLAGS: --follow-tags
 
   publish:
     needs: bump-version
