@@ -4,9 +4,13 @@ from pathlib import Path
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
+# Read version from a file
+version_file = this_directory / "VERSION"
+version = version_file.read_text().strip()
+
 setup(
     name='aquilax',
-    version='1.1.5',
+    version=version,
     packages=find_packages(),
     install_requires=[
         'requests',
@@ -19,15 +23,15 @@ setup(
         ],
     },
     long_description=long_description,
-    long_description_content_type='text/markdown',  
-    url="https://github.com/AquilaX-AI/AquilaX-Client", 
+    long_description_content_type='text/markdown',
+    url="https://github.com/AquilaX-AI/AquilaX-Client",
     author="Omer",
     author_email="mdomerkhan8000@gmail.com",
-   classifiers=[
+    classifiers=[
         'Programming Language :: Python :: 3',
-        'License :: OSI Approved :: Apache Software License',  
+        'License :: OSI Approved :: Apache Software License',
         'Operating System :: OS Independent',
     ],
-    license="Apache License 2.0",  
+    license="Apache License 2.0",
     python_requires='>=3.6',
 )

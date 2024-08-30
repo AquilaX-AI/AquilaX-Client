@@ -6,7 +6,40 @@ on:
       - main
 
 jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out the repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bump2version
+
+    - name: Bump version
+      id: bump_version
+      run: |
+        bump2version patch --current-version $(cat VERSION) --new-version $(python -c "import sys; v = sys.argv[1].split('.'); v[-1] = str(int(v[-1]) + 1); print('.'.join(v))" $(cat VERSION)) VERSION
+        git add VERSION
+        git commit -m "Bump version to $(cat VERSION)"
+        git tag "v$(cat VERSION)"
+
+    - name: Push version bump
+      uses: ad-m/github-push-action@v0.6.0
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: main
+        tags: true
+
   publish:
+    needs: bump-version
     runs-on: ubuntu-latest
 
     steps:
@@ -22,11 +55,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install setuptools wheel twine
-
-    - name: Debug GitHub secrets
-      run: echo ${{ secrets.PYPI_API_TOKEN }}
-      env:
-        PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 
     - name: Build the package
       run: |
