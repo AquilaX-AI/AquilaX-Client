@@ -67,6 +67,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install setuptools wheel twine
 
+    - name: Clean up previous builds
+      run: |
+        rm -rf build/ dist/ *.egg-info
+
     - name: Build the package
       run: |
         python setup.py sdist bdist_wheel
