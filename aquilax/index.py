@@ -85,7 +85,7 @@ def main():
             )
             scan_id = scan_response.get('scan_id')
             project_id = scan_response.get('project_id')
-            logger.info(f"Scan Started: {scan_response}")
+            {scan_response}
 
         elif args.command == 'get-scan-details':
             # Get Scan Details
