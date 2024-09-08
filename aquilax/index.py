@@ -96,7 +96,7 @@ def main():
         elif args.command == 'get-scan-details':
             # Get Scan Details
             scan_details = client.get_scan_by_id(args.org_id, args.group_id, args.project_id, args.scan_id)
-            logger.info(f"Scan Details: {scan_details}")
+            print(json.dumps(scan_details))
 
         elif args.command == 'get-orgs':
             # Get All Organizations
