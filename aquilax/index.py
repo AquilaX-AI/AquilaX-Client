@@ -1,5 +1,6 @@
 import argparse
 import sys
+import json
 from aquilax.client import APIClient
 from aquilax.logger import logger
 
@@ -85,7 +86,12 @@ def main():
             )
             scan_id = scan_response.get('scan_id')
             project_id = scan_response.get('project_id')
-            logger.info(f"{scan_response}")
+
+            if scan_id and project_id:
+                scan_response['scan_id'] = scan_id
+                scan_response['project_id'] = project_id
+
+            print(json.dumps(scan_response))
 
         elif args.command == 'get-scan-details':
             # Get Scan Details
