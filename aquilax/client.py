@@ -35,7 +35,6 @@ class APIClient:
         headers = self.headers.copy()
         headers['Content-Type'] = m.content_type
 
-        # logger.info("Sending organization creation request with form-data.")
         response = requests.post(f"{self.base_url}/organization", headers=headers, data=m)
         response.raise_for_status()
         return response.json()
@@ -49,7 +48,6 @@ class APIClient:
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
 
-        # logger.info("Sending group creation request with JSON data.")
         response = requests.post(f"{self.base_url}/organization/{org_id}/group", headers=headers, json=data)
         response.raise_for_status()
         return response.json()
@@ -66,28 +64,23 @@ class APIClient:
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
 
-        # logger.info("Sending scan start request with JSON data.")
         response = requests.post(f"{self.base_url}/organization/{org_id}/group/{group_id}/scan", headers=headers, json=data)
         response.raise_for_status()
         return response.json()
 
     def get_scan_by_id(self, org_id, group_id, project_id, scan_id):
         headers = self.headers.copy()
-        logger.info(f"Retrieving scan details for scan ID {scan_id}.")
         response = requests.get(f"{self.base_url}/organization/{org_id}/group/{group_id}/project/{project_id}/scan/{scan_id}", headers=headers)
         response.raise_for_status()
         return response.json()
 
     def get_all_orgs(self):
         headers = self.headers.copy()
-        logger.info("Retrieving all organizations.")
         response = requests.get(f"{self.base_url}/organization", headers=headers)
         response.raise_for_status()
         return response.json()
 
     def get_all_groups(self, org_id):
-        # headers = self.headers.copy()
-        # logger.info(f"Retrieving all groups for organization ID {org_id}.")
         response = requests.get(f"{self.base_url}/organization/{org_id}/group", headers=self.headers)
         response.raise_for_status()
         return response.json()
@@ -99,7 +92,6 @@ class APIClient:
             'limit': limit,
             'page': page
         }
-        
         response = requests.get(f"{self.base_url}/organization/{org_id}/scans", headers=headers, params=params)
         response.raise_for_status()
         return response.json()

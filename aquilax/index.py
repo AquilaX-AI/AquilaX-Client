@@ -5,6 +5,19 @@ from aquilax.client import APIClient
 from aquilax.logger import logger
 import os
 
+CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
+
+def load_config():
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_config(config):
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=4)
+
 def get_version():
     try:
         version_file_path = os.path.join(os.path.dirname(__file__), 'VERSION')
@@ -17,11 +30,17 @@ def get_version():
 def main():
     parser = argparse.ArgumentParser(description="Aquilax API Client")
 
+    config = load_config()
+
     # Get the version from the VERSION file
     version = get_version()
     parser.add_argument('-v', '--version', action='version', version=f'Aquilax Client {version}', help="aquilax version check")
 
     subparsers = parser.add_subparsers(dest='command', help="Available commands")
+
+    # set org and group ID
+    parser.add_argument('--set-org-id', help="Set and save default organization ID")
+    parser.add_argument('--set-group-id', help="Set and save default group ID")
 
     # Organization command
     org_parser = subparsers.add_parser('org', help='Create an organization')
@@ -34,15 +53,15 @@ def main():
 
     # Group command
     group_parser = subparsers.add_parser('group', help='Create a group')
-    group_parser.add_argument('--org-id', required=True, help='Organization ID')
+    group_parser.add_argument('--org-id', default=config.get('org_id'), help='Organization ID')
     group_parser.add_argument('--name', required=True, help='Name of the group')
     group_parser.add_argument('--description', default='To test all the prod apps', help='Description of the group')
     group_parser.add_argument('--tags', nargs='+', default=['scan', 'aqilax'], help='Tags for the group')
 
     # Scan command
     scan_parser = subparsers.add_parser('scan', help='Start a scan')
-    scan_parser.add_argument('--org-id', required=True, help='Organization ID')
-    scan_parser.add_argument('--group-id', required=True, help='Group ID')
+    scan_parser.add_argument('--org-id', default=config.get('org_id'), help='Organization ID')
+    scan_parser.add_argument('--group-id', default=config.get('group_id'), help='Group ID')
     scan_parser.add_argument('--git-uri', required=True, help='Git repository URI')
     scan_parser.add_argument('--scanners', nargs='+', default=['pii_scanner'], help='Scanners to use')
     scan_parser.add_argument('--public', type=bool, default=True, help='Set scan visibility to public')
@@ -69,6 +88,18 @@ def main():
     get_scans_parser.add_argument('--page', type=int, default=1, help='Page number to retrieve (default is 1)')
 
     args = parser.parse_args()
+
+    if args.set_org_id:
+        config['org_id'] = args.set_org_id
+        save_config(config)
+        print(f"Default Organization ID set to '{args.set_org_id}' and saved.")
+        return
+
+    if args.set_group_id:
+        config['group_id'] = args.set_group_id
+        save_config(config)
+        print(f"Default Group ID set to '{args.set_group_id}' and saved.")
+        return
 
     if not args.command:
         parser.print_help()
