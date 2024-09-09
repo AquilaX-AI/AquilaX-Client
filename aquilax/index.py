@@ -20,7 +20,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.13"
+        version = "1.1.15"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -183,25 +183,30 @@ def main():
 
         elif args.command == 'get-scans':
             # Get All Scans
+            org_id = args.org_id or config.get('org_id')
+            if not org_id:
+                print("Error: Organization ID is required but not provided.")
+                return
+            
             scans_response = client.get_all_scans(args.org_id, page=args.page)
-            scans = scans_response.get('all_scans', [])
+            scans = scans_response
             
             if not scans:
                 print(f"No scans found for organization ID '{args.org_id}'.")
                 return
             
             print(f"\nScans List for Organization ID: {args.org_id}")
-            print(f"{'Scan ID':<20} {'Group ID':<40} {'Project ID':<40} {'Status':<15} {'Created At':<25}")
+            print(f"{'Scan ID':<20} {'Group ID':<40} {'Git URI':<40} {'Status':<15} {'Created At':<25}")
             print("="*140)
             
             for scan in scans:
-                scan_id = scan.get('id', 'N/A')
+                scan_id = scan.get('_id', 'N/A')
                 group_id = scan.get('group', 'N/A')
-                project_id = scan.get('project', 'N/A')
+                git_uri = scan.get('git_uri', 'N/A')
                 status = scan.get('status', 'N/A')
                 created_at = scan.get('created_at', 'N/A')
                 
-                print(f"{scan_id:<20} {group_id:<40} {project_id:<40} {status:<15} {created_at:<25}")
+                print(f"{scan_id:<20} {group_id:<40} {git_uri:<40} {status:<15} {created_at:<25}")
             print("\n\n")
 
     except ValueError as ve:
