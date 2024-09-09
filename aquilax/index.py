@@ -3,9 +3,23 @@ import sys
 import json
 from aquilax.client import APIClient
 from aquilax.logger import logger
+import os
+
+def get_version():
+    try:
+        version_file_path = os.path.join(os.path.dirname(__file__), 'VERSION')
+        with open(version_file_path, 'r') as version_file:
+            return version_file.read().strip()
+    except Exception as e:
+        logger.error(f"Failed to read the VERSION file: {e}")
+        return "Unknown"
 
 def main():
     parser = argparse.ArgumentParser(description="Aquilax API Client")
+
+    # Get the version from the VERSION file
+    version = get_version()
+    parser.add_argument('-v', '--version', action='version', version=f'Aquilax Client {version}', help="aquilax version check")
 
     subparsers = parser.add_subparsers(dest='command', help="Available commands")
 
