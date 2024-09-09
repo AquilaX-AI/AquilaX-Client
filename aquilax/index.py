@@ -20,7 +20,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.16"
+        version = "1.1.17"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -185,17 +185,17 @@ def main():
             # Get All Scans
             org_id = args.org_id or config.get('org_id')
             if not org_id:
-                print("Error: Organization ID is required but not provided.")
+                print("Error: Organization ID is required but not provided, and no default is set in the config.")
                 return
             
-            scans_response = client.get_all_scans(args.org_id, page=args.page)
+            scans_response = client.get_all_scans(org_id, page=args.page)
             scans = scans_response
             
             if not scans:
-                print(f"No scans found for organization ID '{args.org_id}'.")
+                print(f"No scans found for organization ID '{org_id}'.")
                 return
             
-            print(f"\nScans List for Organization: {args.org_id}")
+            print(f"\nScans List for Organization ID: {org_id}")
             print(f"{'Scan ID':<20} {'Group ID':<40} {'Git URI':<40} {'Status':<15}")
             print("="*125)
             
