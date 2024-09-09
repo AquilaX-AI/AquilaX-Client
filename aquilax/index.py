@@ -79,7 +79,7 @@ def main():
 
     # Get All Groups command
     get_groups_parser = subparsers.add_parser('get-groups', help='Get all groups for an organization')
-    get_groups_parser.add_argument('--org-id', required=True, help='Organization ID')
+    get_groups_parser.add_argument('--org-id', default=config.get('org_id'), help='Organization ID')
 
     # Get All Scans command
     get_scans_parser = subparsers.add_parser('get-scans', help='Get all scans for an organization')
