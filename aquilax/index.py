@@ -20,7 +20,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.15"
+        version = "1.1.16"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -83,7 +83,7 @@ def main():
 
     # Get All Scans command
     get_scans_parser = subparsers.add_parser('get-scans', help='Get all scans for an organization')
-    get_scans_parser.add_argument('--org-id', required=True, help='Organization ID')
+    get_scans_parser.add_argument('--org-id', help='Organization ID')
     get_scans_parser.add_argument('--page', type=int, default=1, help='Page number to retrieve (default is 1)')
 
     args = parser.parse_args()
@@ -195,18 +195,17 @@ def main():
                 print(f"No scans found for organization ID '{args.org_id}'.")
                 return
             
-            print(f"\nScans List for Organization ID: {args.org_id}")
-            print(f"{'Scan ID':<20} {'Group ID':<40} {'Git URI':<40} {'Status':<15} {'Created At':<25}")
-            print("="*140)
+            print(f"\nScans List for Organization: {args.org_id}")
+            print(f"{'Scan ID':<20} {'Group ID':<40} {'Git URI':<40} {'Status':<15}")
+            print("="*125)
             
             for scan in scans:
                 scan_id = scan.get('_id', 'N/A')
                 group_id = scan.get('group', 'N/A')
                 git_uri = scan.get('git_uri', 'N/A')
                 status = scan.get('status', 'N/A')
-                created_at = scan.get('created_at', 'N/A')
                 
-                print(f"{scan_id:<20} {group_id:<40} {git_uri:<40} {status:<15} {created_at:<25}")
+                print(f"{scan_id:<20} {group_id:<40} {git_uri:<40} {status:<15}")
             print("\n\n")
 
     except ValueError as ve:
