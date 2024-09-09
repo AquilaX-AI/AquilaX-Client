@@ -20,11 +20,10 @@ def save_config(config):
 
 def get_version():
     try:
-        version_file_path = os.path.join(os.path.dirname(__file__), 'VERSION')
-        with open(version_file_path, 'r') as version_file:
-            return version_file.read().strip()
+        version = "1.1.13"
+        return version
     except Exception as e:
-        logger.error(f"Failed to read the VERSION file: {e}")
+        logger.error(f"Failed to get the version")
         return "Unknown"
 
 def main():
