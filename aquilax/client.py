@@ -53,7 +53,7 @@ class APIClient:
         response.raise_for_status()
         return response.json()
 
-    def start_scan(self, org_id, group_id, git_uri, scanners, public, frequency, tags, output_format='json'):
+    def start_scan(self, org_id, group_id, git_uri, scanners, public, frequency, tags):
         data = {
             'git_uri': git_uri,
             'terms': True,
@@ -67,68 +67,13 @@ class APIClient:
 
         response = requests.post(f"{self.base_url}/organization/{org_id}/group/{group_id}/scan", headers=headers, json=data)
         response.raise_for_status()
-        
-        scan_response = response.json()
+        return response.json()
 
-        if output_format == 'sarif':
-            return self.convert_to_sarif(scan_response)
-        
-        return scan_response
-
-    def get_scan_by_id(self, org_id, group_id, project_id, scan_id, output_format='json'):
+    def get_scan_by_id(self, org_id, group_id, project_id, scan_id):
         headers = self.headers.copy()
         response = requests.get(f"{self.base_url}/organization/{org_id}/group/{group_id}/project/{project_id}/scan/{scan_id}", headers=headers)
         response.raise_for_status()
-
-        scan_details = response.json()
-
-        if output_format == 'sarif':
-            return self.convert_to_sarif(scan_details)
-        else:
-            return scan_details
-
-    def convert_to_sarif(self, scan_details):
-        sarif_template = {
-            "version": "2.1.0",
-            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-            "runs": [{
-                "tool": {
-                    "driver": {
-                        "name": "Aquilax",
-                        "informationUri": "https://app.aquilax.ai",
-                        "rules": []
-                    }
-                },
-                "results": []
-            }]
-        }
-
-        for result in scan_details["scan"]["results"]:
-            for finding in result["findings"]:
-                sarif_result = {
-                    "ruleId": finding["id"],
-                    "ruleIndex": len(sarif_template["runs"][0]["tool"]["driver"]["rules"]),
-                    "message": {"text": finding["message"]},
-                    "locations": [{
-                        "physicalLocation": {
-                            "artifactLocation": {"uri": finding["path"]},
-                            "region": {
-                                "startLine": finding["line_start"],
-                                "endLine": finding["line_end"]
-                            }
-                        }
-                    }],
-                    "level": finding["severity"].lower() if finding["severity"] else "warning"
-                }
-                sarif_template["runs"][0]["results"].append(sarif_result)
-                sarif_template["runs"][0]["tool"]["driver"]["rules"].append({
-                    "id": finding["id"],
-                    "shortDescription": {"text": finding["vuln"]},
-                    "fullDescription": {"text": finding["message"]},
-                    "defaultConfiguration": {"level": finding["severity"].lower() if finding["severity"] else "warning"}
-                })
-
-        return json.dumps(sarif_template, indent=4)
+        return response.json()
 
     def get_all_orgs(self):
         headers = self.headers.copy()

@@ -20,7 +20,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.20"
+        version = "1.1.21"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -66,7 +66,6 @@ def main():
     scan_parser.add_argument('--public', type=bool, default=True, help='Set scan visibility to public')
     scan_parser.add_argument('--frequency', default='Once', help='Scan frequency')
     scan_parser.add_argument('--tags', nargs='+', default=['github', 'abheysharmSEDq', 'django'], help='Tags for the scan')
-    scan_parser.add_argument('--output-format', default='json', choices=['json', 'sarif'], help='Specify the output format (json or sarif)')
 
     # Get Scan Details command
     get_scan_details_parser = subparsers.add_parser('get-scan-details', help='Get scan details')
@@ -74,7 +73,6 @@ def main():
     get_scan_details_parser.add_argument('--group-id', required=True, help='Group ID')
     get_scan_details_parser.add_argument('--project-id', required=True, help='Project ID')
     get_scan_details_parser.add_argument('--scan-id', required=True, help='Scan ID')
-    get_scan_details_parser.add_argument('--output-format', default='json', choices=['json', 'sarif'], help='Specify the output format (json or sarif)')
 
     # Get All Organizations command
     get_orgs_parser = subparsers.add_parser('get-orgs', help='Get all organizations')
@@ -128,7 +126,7 @@ def main():
         elif args.command == 'scan':
             # Start Scan
             scan_response = client.start_scan(
-                args.org_id, args.group_id, args.git_uri, {scanner: True for scanner in args.scanners}, args.public, args.frequency, args.tags, args.output_format
+                args.org_id, args.group_id, args.git_uri, {scanner: True for scanner in args.scanners}, args.public, args.frequency, args.tags
             )
             scan_id = scan_response.get('scan_id')
             project_id = scan_response.get('project_id')
@@ -137,15 +135,12 @@ def main():
                 scan_response['scan_id'] = scan_id
                 scan_response['project_id'] = project_id
 
-            if args.output_format == 'sarif':
-                print(json.dumps(scan_response['sarif'], indent=4))
-            else:
-                print(json.dumps(scan_response, indent=4))
+            print(json.dumps(scan_response))
 
         elif args.command == 'get-scan-details':
             # Get Scan Details
-            scan_details = client.get_scan_by_id(args.org_id, args.group_id, args.project_id, args.scan_id, args.output_format)
-            print(scan_details)
+            scan_details = client.get_scan_by_id(args.org_id, args.group_id, args.project_id, args.scan_id)
+            print(json.dumps(scan_details))
 
         elif args.command == 'get-orgs':
             # Get All Organizations
