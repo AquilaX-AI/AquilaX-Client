@@ -1,7 +1,9 @@
 import argparse
 import sys
 import json
+import requests
 from aquilax.client import APIClient
+from .config import ClientConfig
 from aquilax.logger import logger
 import os
 
@@ -20,7 +22,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.21"
+        version = "1.1.22"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -66,13 +68,15 @@ def main():
     scan_parser.add_argument('--public', type=bool, default=True, help='Set scan visibility to public')
     scan_parser.add_argument('--frequency', default='Once', help='Scan frequency')
     scan_parser.add_argument('--tags', nargs='+', default=['github', 'abheysharmSEDq', 'django'], help='Tags for the scan')
+    scan_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
 
     # Get Scan Details command
     get_scan_details_parser = subparsers.add_parser('get-scan-details', help='Get scan details')
-    get_scan_details_parser.add_argument('--org-id', required=True, help='Organization ID')
-    get_scan_details_parser.add_argument('--group-id', required=True, help='Group ID')
+    get_scan_details_parser.add_argument('--org-id', help='Organization ID')
+    get_scan_details_parser.add_argument('--group-id', help='Group ID')
     get_scan_details_parser.add_argument('--project-id', required=True, help='Project ID')
     get_scan_details_parser.add_argument('--scan-id', required=True, help='Scan ID')
+    get_scan_details_parser.add_argument('--format', choices=['json', 'sarif', 'table'], default='table', help='Output format: json, sarif, or table')
 
     # Get All Organizations command
     get_orgs_parser = subparsers.add_parser('get-orgs', help='Get all organizations')
@@ -132,15 +136,83 @@ def main():
             project_id = scan_response.get('project_id')
 
             if scan_id and project_id:
-                scan_response['scan_id'] = scan_id
-                scan_response['project_id'] = project_id
-
-            print(json.dumps(scan_response))
+                if args.format == "json":
+                    print(json.dumps(scan_response, indent=4))
+                    print('\n')
+                else:
+                    print('\n')
+                    print(f"Scanning Started: scan_id:{scan_id} & project_id:{project_id}")
+                    print('\n')
+            else:
+                print("Error: Unable to start the scan.")
 
         elif args.command == 'get-scan-details':
+            config = load_config()
+            org_id = args.org_id or config.get('org_id')
+            group_id = args.group_id or config.get('group_id')
+
+            if not org_id or not group_id:
+                print("Organization ID and Group ID must be provided or set as default in config.")
+                return
+
             # Get Scan Details
-            scan_details = client.get_scan_by_id(args.org_id, args.group_id, args.project_id, args.scan_id)
-            print(json.dumps(scan_details))
+            scan_details = client.get_scan_by_id(org_id, group_id, args.project_id, args.scan_id)
+
+            if not scan_details or "scan" not in scan_details:
+                print("No scan details found.")
+                return
+
+            scan_info = scan_details.get("scan", {})
+            results = scan_info.get("results", [])
+            output_format = args.format or "table"
+            
+            if output_format == "json":
+                print(json.dumps(scan_details, indent=4))
+
+            elif output_format == "sarif":
+                base_url = ClientConfig.get('baseUrl').rstrip('/')
+                base_api_path = ClientConfig.get('baseApiPath').rstrip('/')
+
+                sarif_url = f"{base_url}{base_api_path}/organization/{org_id}/group/{group_id}/project/{args.project_id}/scan/{args.scan_id}?format=sarif"
+                
+                headers = {
+                    'X-AX-Key': client.api_token,
+                    'Content-Type': 'application/json'
+                }
+                
+                sarif_response = requests.get(sarif_url, headers=headers)
+                sarif_response.raise_for_status()
+                
+                print(json.dumps(sarif_response.json(), indent=4))
+
+            else:
+                #table format
+                print("\n")
+                print(f"Git URI: {scan_info.get('git_uri')}")
+                print(f"Branch: {scan_info.get('branch')}")
+                print(f"Scanners Used: {', '.join([scanner for scanner, used in scan_info.get('scanners', {}).items() if used])}")
+                print("\nResults:")
+
+                if not results:
+                    print("No findings for this scan.")
+                    return
+
+                for result in results:
+                    scanner_name = result.get('scanner')
+                    findings = result.get('findings', [])
+                    print(f"\nScanner: {scanner_name}")
+                    if not findings:
+                        print("No findings for this scanner.")
+                        continue
+
+                    print(f"{'Path':<30} {'Vulnerability':<75} {'Severity':<10}")
+                    print("="*115)
+                    for finding in findings:
+                        path = finding.get('path', 'N/A')
+                        vuln = finding.get('vuln', 'N/A')
+                        severity = finding.get('severity', 'N/A')
+                        print(f"{path:<30} {vuln:<75} {severity:<10}")
+                    print("\n")
 
         elif args.command == 'get-orgs':
             # Get All Organizations
