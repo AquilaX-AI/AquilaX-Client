@@ -52,7 +52,7 @@ class APIClient:
         response.raise_for_status()
         return response.json()
 
-    def start_scan(self, org_id, group_id, git_uri, scanners, public, frequency, tags):
+    def start_scan(self, org_id, group_id, git_uri, scanners, public, frequency, tags, output_format='json'):
         data = {
             'git_uri': git_uri,
             'terms': True,
@@ -60,12 +60,19 @@ class APIClient:
             'public': public,
             'frequency': frequency,
             'tags': tags,
+            'output_format': output_format  # Send output format as part of the scan as requested
         }
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
 
         response = requests.post(f"{self.base_url}/organization/{org_id}/group/{group_id}/scan", headers=headers, json=data)
         response.raise_for_status()
+
+        if output_format == 'sarif':
+            return {
+                'sarif': response.json().get('sarif', {})
+            }
+        
         return response.json()
 
     def get_scan_by_id(self, org_id, group_id, project_id, scan_id):
