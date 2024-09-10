@@ -20,7 +20,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.18"
+        version = "1.1.19"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -74,6 +74,7 @@ def main():
     get_scan_details_parser.add_argument('--group-id', required=True, help='Group ID')
     get_scan_details_parser.add_argument('--project-id', required=True, help='Project ID')
     get_scan_details_parser.add_argument('--scan-id', required=True, help='Scan ID')
+    get_scan_details_parser.add_argument('--output-format', default='json', choices=['json', 'sarif'], help='Specify the output format (json or sarif)')
 
     # Get All Organizations command
     get_orgs_parser = subparsers.add_parser('get-orgs', help='Get all organizations')
@@ -143,8 +144,8 @@ def main():
 
         elif args.command == 'get-scan-details':
             # Get Scan Details
-            scan_details = client.get_scan_by_id(args.org_id, args.group_id, args.project_id, args.scan_id)
-            print(json.dumps(scan_details))
+            scan_details = client.get_scan_by_id(args.org_id, args.group_id, args.project_id, args.scan_id, args.output_format)
+            print(scan_details)
 
         elif args.command == 'get-orgs':
             # Get All Organizations
