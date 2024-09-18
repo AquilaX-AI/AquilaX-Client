@@ -16,6 +16,7 @@ setup(
         'requests',
         'python-dotenv',
         'requests-toolbelt',
+        'tabulate',
     ],
     entry_points={
         'console_scripts': [

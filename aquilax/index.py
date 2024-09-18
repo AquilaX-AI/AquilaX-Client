@@ -23,7 +23,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.23"
+        version = "1.1.24"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -47,9 +47,9 @@ def main():
     # Organization command
     org_parser = subparsers.add_parser('org', help='Create an organization')
     org_parser.add_argument('--name', required=True, help='Name of the organization')
-    org_parser.add_argument('--description', default='Social Media', help='Description of the organization')
-    org_parser.add_argument('--business-name', default='MenDoFeel Technologies', help='Business name of the organization')
-    org_parser.add_argument('--website', default='mendofeel.com', help='Website of the organization')
+    org_parser.add_argument('--description', default='Security Scanning', help='Description of the organization')
+    org_parser.add_argument('--business-name', default='Technologies', help='Business name of the organization')
+    org_parser.add_argument('--website', default='yourwebsite.com', help='Website of the organization')
     org_parser.add_argument('--org-pic', default=None, help='Organization picture URL')
     org_parser.add_argument('--usage', default='Business', help='Usage type of the organization')
 
@@ -58,7 +58,7 @@ def main():
     group_parser.add_argument('--org-id', default=config.get('org_id'), help='Organization ID')
     group_parser.add_argument('--name', required=True, help='Name of the group')
     group_parser.add_argument('--description', default='To test all the prod apps', help='Description of the group')
-    group_parser.add_argument('--tags', nargs='+', default=['scan', 'aqilax'], help='Tags for the group')
+    group_parser.add_argument('--tags', nargs='+', default=['scan', 'aquilax'], help='Tags for the group')
 
     # Scan command
     scan_parser = subparsers.add_parser('scan', help='Start a scan')
@@ -164,7 +164,6 @@ def main():
             else:
                 print("Unable to start the scan.")
 
-
         elif args.command == 'get-scan-details':
             config = load_config()
             org_id = args.org_id or config.get('org_id')
@@ -237,8 +236,6 @@ def main():
                     tablefmt="grid"
                 )
                 print(table)
-
-
 
         elif args.command == 'get-orgs':
             # Get All Organizations
