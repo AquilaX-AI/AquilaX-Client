@@ -29,7 +29,7 @@ source env/bin/activate  # On Windows, use `env\Scripts\activate`
 ### Installation
 ```bash
 # install from PyPI
-pip install aquilax==1.0.0
+pip install aquilax
 ```
 ## Usage Command Structure and General Usage
 

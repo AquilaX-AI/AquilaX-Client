@@ -6,6 +6,7 @@ from aquilax.client import APIClient
 from .config import ClientConfig
 from aquilax.logger import logger
 import os
+from tabulate import tabulate
 
 CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
 
@@ -22,7 +23,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.22"
+        version = "1.1.23"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -67,7 +68,7 @@ def main():
     scan_parser.add_argument('--scanners', nargs='+', default=['pii_scanner'], help='Scanners to use')
     scan_parser.add_argument('--public', type=bool, default=True, help='Set scan visibility to public')
     scan_parser.add_argument('--frequency', default='Once', help='Scan frequency')
-    scan_parser.add_argument('--tags', nargs='+', default=['github', 'abheysharmSEDq', 'django'], help='Tags for the scan')
+    scan_parser.add_argument('--tags', nargs='+', default=['aquilax', 'cli', 'tool'], help='Tags for the scan')
     scan_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
 
     # Get Scan Details command
@@ -140,11 +141,29 @@ def main():
                     print(json.dumps(scan_response, indent=4))
                     print('\n')
                 else:
+                    scan_data = [
+                        ["Scan ID", scan_id],
+                        ["Project ID", project_id],
+                        ["Git URI", args.git_uri],
+                        ["Frequency", args.frequency],
+                        ["Tags", ", ".join(args.tags)],
+                        ["Scanners", ", ".join([scanner for scanner in args.scanners])]
+                    ]
+
+                    table = tabulate(
+                        scan_data,
+                        headers=["Detail", "Value"],
+                        tablefmt="grid"
+                    )
+
                     print('\n')
-                    print(f"Scanning Started: scan_id:{scan_id} & project_id:{project_id}")
+                    print(f"Scanning Started Successfully:")
+                    print(table)
                     print('\n')
+
             else:
-                print("Error: Unable to start the scan.")
+                print("Unable to start the scan.")
+
 
         elif args.command == 'get-scan-details':
             config = load_config()
@@ -186,7 +205,6 @@ def main():
                 print(json.dumps(sarif_response.json(), indent=4))
 
             else:
-                #table format
                 print("\n")
                 print(f"Git URI: {scan_info.get('git_uri')}")
                 print(f"Branch: {scan_info.get('branch')}")
@@ -197,22 +215,30 @@ def main():
                     print("No findings for this scan.")
                     return
 
+                all_findings = []
                 for result in results:
-                    scanner_name = result.get('scanner')
+                    scanner_name = result.get('scanner', 'N/A')
                     findings = result.get('findings', [])
-                    print(f"\nScanner: {scanner_name}")
-                    if not findings:
-                        print("No findings for this scanner.")
-                        continue
-
-                    print(f"{'Path':<30} {'Vulnerability':<75} {'Severity':<10}")
-                    print("="*115)
                     for finding in findings:
-                        path = finding.get('path', 'N/A')
-                        vuln = finding.get('vuln', 'N/A')
-                        severity = finding.get('severity', 'N/A')
-                        print(f"{path:<30} {vuln:<75} {severity:<10}")
-                    print("\n")
+                        all_findings.append([
+                            scanner_name,
+                            finding.get('path', 'N/A'),
+                            finding.get('vuln', 'N/A'),
+                            finding.get('severity', 'N/A')
+                        ])
+
+                if not all_findings:
+                    print("No findings across all scanners.")
+                    return
+
+                table = tabulate(
+                    all_findings,
+                    headers=["Scanner", "Path", "Vulnerability", "Severity"],
+                    tablefmt="grid"
+                )
+                print(table)
+
+
 
         elif args.command == 'get-orgs':
             # Get All Organizations
@@ -222,13 +248,19 @@ def main():
                 print("No organizations found.")
                 return
 
-            print("\nOrganizations List:")
-            print(f"{'Organization Name':<30} {'Organization ID':<40}")
-            print("="*70)
+            orgs_table_data = []
             for org in orgs_response.get('orgs', []):
                 org_id = org.get('_id')
                 org_name = org.get('name').strip()
-                print(f"{org_name:<30} {org_id:<40}")
+                orgs_table_data.append([org_name, org_id])
+
+            table = tabulate(
+                orgs_table_data,
+                headers=["Organization Name", "Organization ID"],
+                tablefmt="grid"
+            )
+            print("\nOrganizations List:")
+            print(table)
             print("\n\n")
 
         elif args.command == 'get-groups':
@@ -239,25 +271,29 @@ def main():
             if not groups:
                 print("No groups found for this organization.")
                 return
-            
-            print("\nGroups List for Organization ID:", args.org_id)
-            print(f"{'Group Name':<20} {'Group ID':<40} {'Description':<30} {'Tags':<20}")
-            print("="*110)
-            
+
+            groups_table_data = []
             for group in groups:
                 group_name = group.get('name', 'N/A')
                 group_id = group.get('_id', 'N/A')
                 description = group.get('description', 'N/A')
                 tags = ', '.join(group.get('tags', []))
-                
-                print(f"{group_name:<20} {group_id:<40} {description:<30} {tags:<20}")
+                groups_table_data.append([group_name, group_id, description, tags])
+
+            table = tabulate(
+                groups_table_data,
+                headers=["Group Name", "Group ID", "Description", "Tags"],
+                tablefmt="grid"
+            )
+            print(f"\nGroups List for Organization ID: {args.org_id}")
+            print(table)
             print("\n\n")
 
         elif args.command == 'get-scans':
             # Get All Scans
             org_id = args.org_id or config.get('org_id')
             if not org_id:
-                print("Error: Organization ID is required but not provided, and no default is set in the config.")
+                print("Organization ID is required but not provided, and no default is set in the config.")
                 return
             
             scans_response = client.get_all_scans(org_id, page=args.page)
@@ -266,18 +302,22 @@ def main():
             if not scans:
                 print(f"No scans found for organization ID '{org_id}'.")
                 return
-            
-            print(f"\nScans List for Organization ID: {org_id}")
-            print(f"{'Scan ID':<20} {'Group ID':<40} {'Git URI':<40} {'Status':<15}")
-            print("="*125)
-            
+
+            scans_table_data = []
             for scan in scans:
                 scan_id = scan.get('_id', 'N/A')
                 group_id = scan.get('group', 'N/A')
                 git_uri = scan.get('git_uri', 'N/A')
                 status = scan.get('status', 'N/A')
-                
-                print(f"{scan_id:<20} {group_id:<40} {git_uri:<40} {status:<15}")
+                scans_table_data.append([scan_id, group_id, git_uri, status])
+
+            table = tabulate(
+                scans_table_data,
+                headers=["Scan ID", "Group ID", "Git URI", "Status"],
+                tablefmt="grid"
+            )
+            print(f"\nScans List for Organization ID: {org_id}")
+            print(table)
             print("\n\n")
 
     except ValueError as ve:
