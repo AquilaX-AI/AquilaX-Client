@@ -35,6 +35,38 @@ pip install aquilax
 
 To run the client, use the following structure:```aquilax <command> [options]```The Aquilax API Client supports the following commands:- org: Create an organization.- group: Create a group within an organization.- scan: Start a scan for a specific group.- get-scan-details: Retrieve details of a specific scan.
 
+### **Command: login**
+> Authenticate yourself using API token
+
+> **Example Usage:**
+```bash
+aquilax login <token>
+```
+
+### Configuration
+> Set organization or group as default.
+
+> **Example Usage:**
+```bash
+aquilax --set-org "org_id"
+```
+```bash
+aquilax --set-group "group_id"
+```
+### **Command: get**
+> Get details of organization, groups & scans
+
+> **Example Usage:**
+```bash
+aquilax get orgs
+```
+```bash
+aquilax get groups #requires to set default org
+```
+```bash
+aquilax get scans #requires to set default org & group
+```
+
 ### **Command: org**
 > Creates a new organization with specified details.
 
@@ -45,11 +77,11 @@ To run the client, use the following structure:```aquilax <command> [options]```
 aquilax org --name "My Organization" --description "Org Desc" --business-name "Tech" --website "test.com" --usage "Business"
 ```
 
-### **Command: get-orgs**
+### **Command: get orgs**
 > Get All Organizations
 **Example Usage:**
 ```bash
-aquilax get-orgs
+aquilax get orgs
 ```
 
 ### **Command: group**
@@ -61,11 +93,11 @@ aquilax get-orgs
 aquilax group --org-id "org123" --name "Development Group" --description "Group for devs" --tags "dev" "team"
 ```
 
-### **Command: get-groups**
+### **Command: get groups**
 > Get All Groups
 **Example Usage:**
 ```bash
-aquilax get-groups --org-id "your-org-id"
+aquilax get groups --org-id "your-org-id"
 ```
 
 ### **Command: scan**
@@ -74,29 +106,44 @@ aquilax get-groups --org-id "your-org-id"
 **Options:** --org-id (required): The ID of the organization.--group-id (required): The ID of the group.--git-uri (required): The URI of the Git repository to scan.--scanners (optional, default: ['pii_scanner']): A list of scanners to use.--public (optional, default: True): Whether the scan should be public.--frequency (optional, default: Once): The frequency of the scan (e.g., Once).--tags (optional, default: ['github', 'python', 'django']): Tags associated with the scan.
 
 ```bash
+aquilax scan https://github.com/user/repo
+```
+
+```bash
+aquilax scan https://github.com/user/repo --sync #tail logs
+```
+
+```bash
 aquilax scan --org-id "org123" --group-id "group456" --git-uri "https://github.com/user/repo" --scanners "sast_scanner" "iac_scanner" --public True --frequency Once --tags "security" "audit"
 ```
 
-### **Command: get-scan-details**
+### **Command: get scan-details**
 > Retrieves the details of a specific scan.
 
 **Options:** --org-id (required): The ID of the organization.--group-id (required): The ID of the group.--project-id (required): The ID of the project.--scan-id (required): The ID of the scan.
 ```bash
-aquilax get-scan-details --org-id "org123" --group-id "group456" --project-id "proj789" --scan-id "scan101"
+aquilax get scan-details --org-id "org123" --group-id "group456" --project-id "proj789" --scan-id "scan101"
 ```
 
-### **Command: get-scans**
+```bash
+aquilax get scan-details --project-id "proj789" --scan-id "scan101"
+```
+
+### **Command: get scans**
 > Get All Scans
 **Example Usage:**
+**Example Usage:**
 ```bash
-aquilax get-scans --org-id "your-org-id"
+aquilax get scans #requires to set org as default
+```
+```bash
+aquilax get scans --org-id "your-org-id"
 ```
 
-## Environment Variable
-- You must set the AQUILAX_AUTH environment variable with your Aquilax API token for the client to work.
-
+### **Command: get scans**
+- logout
 ```bash
-export AQUILAX_AUTH=aquilax_api_token_here
+aquilax logout
 ```
 
 ### Command-Line Arguments
