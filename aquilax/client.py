@@ -3,11 +3,26 @@ from requests_toolbelt.multipart.encoder import MultipartEncoder
 from .config import ClientConfig
 from .logger import logger
 import json
+import os
+
+CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
+
+def load_config():
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_config(config):
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=4)
 
 class APIClient:
     def __init__(self):
+        config = load_config()
         self.base_url = f"{ClientConfig.get('baseUrl').rstrip('/')}{ClientConfig.get('baseApiPath')}"
-        self.api_token = ClientConfig.get('apiToken')
+        self.api_token = config.get('apiToken')
         if not self.api_token:
             self.suggest_token_setup()
             raise ValueError('API Token is required.')
@@ -16,9 +31,9 @@ class APIClient:
         }
 
     def suggest_token_setup(self):
-        print("API Token is not set or is invalid.")
-        print("Please ensure you have set the API token in your environment variables as 'export AQUILAX_AUTH'.")
-        print("If you don't have an API token, please visit https://app.aquilax.ai to generate one.")
+            print("API Token is not set or is invalid.")
+            print("Please run 'aquilax login <token>' to set your API token.")
+            print("If you don't have an API token, please visit https://app.aquilax.ai to generate one.")
 
     def create_organization(self, org_name, description, business_name, website, org_pic=None, usage='Business'):
         default_org_pic = "https://i.pinimg.com/236x/a2/c2/64/a2c264977d561691c1ece4921704ae91.jpg"

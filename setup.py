@@ -17,6 +17,7 @@ setup(
         'python-dotenv',
         'requests-toolbelt',
         'tabulate',
+        'colorama',
     ],
     entry_points={
         'console_scripts': [
