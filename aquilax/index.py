@@ -76,7 +76,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.25"
+        version = "1.1.27"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -96,6 +96,12 @@ def main():
     # set org and group ID
     parser.add_argument('--set-org', help="Set and save default organization ID")
     parser.add_argument('--set-group', help="Set and save default group ID")
+
+    # Pull command
+    pull_parser = subparsers.add_parser('pull', help='Fetch scan by scan_id')
+    pull_parser.add_argument('scan_id', help='Scan ID to pull')
+    pull_parser.add_argument('--org-id', help='Organization ID (optional, if not provided, the default org ID will be used)')
+    pull_parser.add_argument('--format', choices=['json', 'table', 'sarif'], default='table', help='Output format: json, sarif, or table')
 
     # Organization command
     org_parser = subparsers.add_parser('org', help='Create an organization')
@@ -161,8 +167,83 @@ def main():
     if args.command == 'logout':
         config.pop('apiToken', None)
         save_config(config)
-        print("Logged out. \n")
+        print("Logged out!. \n")
         return
+    
+    if args.command == 'pull':
+        client = APIClient()
+
+        org_id = args.org_id or config.get('org_id')
+
+        if not org_id:
+            print(f"Organization ID is required but not provided and no default is set.")
+            return
+
+        try:
+            scan_details = client.get_scan_by_scan_id(org_id, args.scan_id)
+
+            if not scan_details or "scan" not in scan_details:
+                print("No scan details found.")
+                return
+
+            output_format = getattr(args, 'format', 'table')
+
+            if output_format == 'sarif':
+                base_url = ClientConfig.get('baseUrl').rstrip('/')
+                base_api_path = ClientConfig.get('baseApiPath').rstrip('/')
+                
+                sarif_url = f"{base_url}{base_api_path}/organization/{org_id}/scan/{args.scan_id}?format=sarif"
+                
+                headers = {
+                    'X-AX-Key': client.api_token,
+                    'Content-Type': 'application/json'
+                }
+                
+                sarif_response = requests.get(sarif_url, headers=headers)
+                sarif_response.raise_for_status()
+
+                print(json.dumps(sarif_response.json(), indent=4))
+
+            elif output_format == 'json':
+                print(json.dumps(scan_details, indent=4))
+
+            else:
+                print("\nScan Details:")
+                scan_info = scan_details.get("scan", {})
+                results = scan_info.get("results", [])
+                table_data = [
+                    ["Scan ID", args.scan_id],
+                    ["Git URI", scan_info.get('git_uri')],
+                    ["Branch", scan_info.get('branch')],
+                    ["Scanners", ", ".join([scanner for scanner, used in scan_info.get('scanners', {}).items() if used])]
+                ]
+                table = tabulate(table_data, headers=["Detail", "Value"], tablefmt="grid")
+                print(table)
+
+                if results:
+                    all_findings = []
+                    for result in results:
+                        scanner_name = result.get('scanner', 'N/A')
+                        findings = result.get('findings', [])
+                        for finding in findings:
+                            all_findings.append([
+                                scanner_name,
+                                finding.get('path', 'N/A'),
+                                finding.get('vuln', 'N/A'),
+                                finding.get('severity', 'N/A')
+                            ])
+                    findings_table = tabulate(
+                        all_findings,
+                        headers=["Scanner", "Path", "Vulnerability", "Severity"],
+                        tablefmt="grid"
+                    )
+                    print(f"\nFindings:\n{findings_table}")
+
+        except requests.HTTPError as http_err:
+            logger.error(f"HTTP error occurred: {http_err}")
+            print(f"\nResponse: {http_err.response.text}")
+        except Exception as e:
+            logger.error(f"Error occurred: {str(e)}")
 
     if args.set_org:
         config['org_id'] = args.set_org
