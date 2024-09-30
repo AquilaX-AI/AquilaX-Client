@@ -76,7 +76,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.27"
+        version = "1.1.28"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -300,17 +300,20 @@ def main():
             project_id = scan_response.get('project_id')
 
             if scan_id and project_id:
-                scan_data = [
-                    ["Scan ID", scan_id],
-                    ["Project ID", project_id],
-                    ["Git URI", args.git],
-                    ["Frequency", args.frequency],
-                    ["Tags", ", ".join(args.tags)],
-                    ["Scanners", ", ".join([scanner for scanner in args.scanners])]
-                ]
+                scan_data = {
+                    "Scan ID": scan_id,
+                    "Project ID": project_id,
+                    "Git URI": args.git,
+                    "Frequency": args.frequency,
+                    "Tags": ", ".join(args.tags),
+                    "Scanners": ", ".join([scanner for scanner in args.scanners])
+                }
 
-                table = tabulate(scan_data, headers=["Detail", "Value"], tablefmt="grid")
-                print(f"\nScanning Started:\n{table}")
+                if args.format == 'json':
+                    print(json.dumps(scan_data, indent=4))
+                else:
+                    table = tabulate(scan_data.items(), headers=["Detail", "Value"], tablefmt="grid")
+                    print(f"\nScanning Started:\n{table}")
 
                 if args.sync:
                     print("\nSync mode enabled...\n")
@@ -331,6 +334,7 @@ def main():
                             break
 
                         status = scan_details.get('scan', {}).get('status', 'N/A')
+
                         results = scan_details.get('scan', {}).get('results', [])
                         new_findings = []
 
@@ -349,8 +353,10 @@ def main():
                                     current_findings.add(finding_entry)
                                     new_findings.append(finding_entry)
 
-                        # Updateing status and findings
-                        print_status_and_findings(status, list(current_findings), loading_index)
+                        if args.format == 'json':
+                            print(json.dumps(list(current_findings), indent=4))
+                        else:
+                            print_status_and_findings(status, list(current_findings), loading_index)
 
                         loading_index += 1
 
