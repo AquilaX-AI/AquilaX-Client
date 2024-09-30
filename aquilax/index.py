@@ -76,7 +76,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.28"
+        version = "1.1.29"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -96,6 +96,20 @@ def main():
     # set org and group ID
     parser.add_argument('--set-org', help="Set and save default organization ID")
     parser.add_argument('--set-group', help="Set and save default group ID")
+
+    # CICD SCAN
+    ci_parser = subparsers.add_parser('ci-scan', help='Run a CI/CD scan')
+    ci_parser.add_argument('git', help='Git repository URI')
+    ci_parser.add_argument('--org-id', help='Organization ID')
+    ci_parser.add_argument('--group-id', help='Group ID')
+    ci_parser.add_argument('--scanners', nargs='+', default=[
+        'pii_scanner', 'secret_scanner', 'iac_scanner', 'sast_scanner',
+        'sca_scanner', 'container_scanner', 'image_scanner', 'cicd_scanner'
+    ], help='Scanners to use')
+    ci_parser.add_argument('--public', type=bool, default=True, help='Set scan visibility to public')
+    ci_parser.add_argument('--frequency', default='Once', help='Scan frequency')
+    ci_parser.add_argument('--tags', nargs='+', default=['aquilax', 'cli', 'ci'], help='Tags for the scan')
+    ci_parser.add_argument('--fail-on-vulns', action='store_true', help='Fail the pipeline if vulnerabilities are found')
 
     # Pull command
     pull_parser = subparsers.add_parser('pull', help='Fetch scan by scan_id')
@@ -371,6 +385,56 @@ def main():
 
             else:
                 print("Unable to start the scan.")
+
+        elif args.command == 'ci-scan':
+            org_id = args.org_id or config.get('org_id')
+            group_id = args.group_id or config.get('group_id')
+
+            if not org_id:
+                print("Organization ID is not set. Please provide it using --org-id or set a default using --set-org.")
+                sys.exit(1)
+
+            if not group_id:
+                print("Group ID is not set. Please provide it using --group-id or set a default using --set-group.")
+                sys.exit(1)
+
+            scan_response = client.start_scan(
+                org_id, group_id, args.git,
+                {scanner: True for scanner in args.scanners},
+                args.public, args.frequency, args.tags
+            )
+            scan_id = scan_response.get('scan_id')
+
+            if scan_id:
+                print(f"Scan started with ID: {scan_id}. Waiting for completion...")
+
+                while True:
+                    time.sleep(10)
+                    scan_details = client.get_scan_by_scan_id(org_id, scan_id)
+                    status = scan_details.get('scan', {}).get('status', 'N/A')
+                    if status == 'COMPLETED':
+                        print("Scan completed successfully.")
+                        break
+                    elif status == 'FAILED':
+                        print("Scan failed.")
+                        sys.exit(1)
+                    else:
+                        print(f"Scan status: {status}. Waiting...")
+
+                sarif_results = client.get_scan_results_sarif(org_id, scan_id)
+                with open('results.sarif', 'w') as sarif_file:
+                    json.dump(sarif_results, sarif_file, indent=4)
+
+                vulnerabilities_count = sum(len(run.get('results', [])) for run in sarif_results.get('runs', []))
+                print(f"Number of vulnerabilities found: {vulnerabilities_count}")
+
+                if args.fail_on_vulns and vulnerabilities_count > 0:
+                    print("Vulnerabilities found. Failing the pipeline.")
+                    sys.exit(1)
+            else:
+                print("Unable to start the scan.")
+                sys.exit(1)
+
 
         elif args.command == 'get':
             if args.get_command == 'orgs':

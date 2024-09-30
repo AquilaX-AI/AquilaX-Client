@@ -22,7 +22,7 @@ class APIClient:
     def __init__(self):
         config = load_config()
         self.base_url = f"{ClientConfig.get('baseUrl').rstrip('/')}{ClientConfig.get('baseApiPath')}"
-        self.api_token = config.get('apiToken')
+        self.api_token = config.get('apiToken') or os.getenv('AQUILAX_AUTH')
         if not self.api_token:
             self.suggest_token_setup()
             raise ValueError('API Token is required.')
@@ -117,5 +117,12 @@ class APIClient:
     def get_scan_by_scan_id(self, org_id, scan_id):
         headers = self.headers.copy()
         response = requests.get(f"{self.base_url}/organization/{org_id}/scan/{scan_id}", headers=headers)
+        response.raise_for_status()
+        return response.json()
+    
+    def get_scan_results_sarif(self, org_id, scan_id):
+        headers = self.headers.copy()
+        headers['Content-Type'] = 'application/json'
+        response = requests.get(f"{self.base_url}/organization/{org_id}/scan/{scan_id}?format=sarif", headers=headers)
         response.raise_for_status()
         return response.json()
