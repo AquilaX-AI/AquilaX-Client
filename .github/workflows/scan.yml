@@ -1,0 +1,44 @@
+name: AquilaX Security Scan
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  ORG_ID: "6606c1f654f58aa2a323075d"
+  GROUP_ID: "6699310b30a09ab96273dea3"
+
+jobs:
+  aquilax_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install AquilaX CLI
+        run: pip install aquilax
+
+      - name: AquilaX CI Scan
+        env:
+          AQUILAX_AUTH: ${{ secrets.AQUILAX_API_TOKEN }}
+        run: |
+          GIT_URL="https://github.com/${{ github.repository }}.git"
+          aquilax ci-scan \
+            "$GIT_URL" \
+            --org-id "$ORG_ID" \
+            --group-id "$GROUP_ID"
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: results.sarif
