@@ -33,7 +33,7 @@ class APIClient:
     def suggest_token_setup(self):
             print("API Token is not set or is invalid.")
             print("Please run 'aquilax login <token>' to set your API token.")
-            print("If you don't have an API token, please visit https://app.aquilax.ai to generate one.")
+            print("If you don't have an API token, please visit https://aquilax.ai to generate one.")
 
     def create_organization(self, org_name, description, business_name, website, org_pic=None, usage='Business'):
         default_org_pic = "https://i.pinimg.com/236x/a2/c2/64/a2c264977d561691c1ece4921704ae91.jpg"
