@@ -76,7 +76,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.31"
+        version = "1.1.32"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -110,6 +110,8 @@ def main():
     ci_parser.add_argument('--frequency', default='Once', help='Scan frequency')
     ci_parser.add_argument('--tags', nargs='+', default=['aquilax', 'cli', 'ci'], help='Tags for the scan')
     ci_parser.add_argument('--fail-on-vulns', action='store_true', help='Fail the pipeline if vulnerabilities are found')
+    ci_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
+    ci_parser.add_argument('--sync', action='store_true', help='Enable sync mode to fetch scan results periodically') 
 
     # Pull command
     pull_parser = subparsers.add_parser('pull', help='Fetch scan by scan_id')
@@ -142,6 +144,8 @@ def main():
     scan_parser.add_argument('--tags', nargs='+', default=['aquilax', 'cli', 'tool'], help='Tags for the scan')
     scan_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
     scan_parser.add_argument('--sync', action='store_true', help="Enable sync mode to fetch scan results periodically")
+    scan_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
+    ci_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
 
     get_parser = subparsers.add_parser('get', help='Get information')
     get_subparsers = get_parser.add_subparsers(dest='get_command')
@@ -377,7 +381,7 @@ def main():
                         if status in ['COMPLETED', 'FAILED']:
                             if current_findings:
                                 print(f"\nScan Status: {status}")
-                                print(f"{Fore.YELLOW}Total Vulnerabilities Found: {len(current_findings)}{Style.RESET_ALL}")
+                                print(f"{Fore.YELLOW}Number of vulnerabilities found:: {len(current_findings)}{Style.RESET_ALL}")
                             else:
                                 print(f"\nScan Status: {status}")
                                 print(f"{Fore.GREEN}No Vulns Found{Style.RESET_ALL}")
@@ -398,42 +402,123 @@ def main():
                 print("Group ID is not set. Please provide it using --group-id or set a default using --set-group.")
                 sys.exit(1)
 
+            # Debugging
+            print(f"DEBUG: org_id={org_id}, group_id={group_id}, git={args.git}, branch={args.branch}, scanners={args.scanners}, public={args.public}, frequency={args.frequency}, tags={args.tags}, format={args.format}")
+
             scan_response = client.start_scan(
-                org_id, group_id, args.git,
+                org_id,
+                group_id,
+                args.git,
+                args.branch,
                 {scanner: True for scanner in args.scanners},
-                args.public, args.frequency, args.tags
+                args.public,
+                args.frequency,
+                args.tags
             )
             scan_id = scan_response.get('scan_id')
 
             if scan_id:
                 print(f"Scan started with ID: {scan_id}. Waiting for completion...")
 
-                while True:
-                    time.sleep(10)
-                    scan_details = client.get_scan_by_scan_id(org_id, scan_id)
-                    status = scan_details.get('scan', {}).get('status', 'N/A')
-                    if status == 'COMPLETED':
-                        print("Scan completed successfully.")
-                        break
-                    elif status == 'FAILED':
-                        print("Scan failed.")
-                        sys.exit(1)
-                    else:
-                        print(f"Scan status: {status}. Waiting...")
+                if args.sync:
+                    # Sync Mode:
+                    print("Sync mode enabled.\n")
+                    current_findings = set()
+                    loading_index = 0
 
-                sarif_results = client.get_scan_results_sarif(org_id, scan_id)
-                with open('results.sarif', 'w') as sarif_file:
-                    json.dump(sarif_results, sarif_file, indent=4)
+                    while True:
+                        time.sleep(10)
 
-                vulnerabilities_count = sum(len(run.get('results', [])) for run in sarif_results.get('runs', []))
-                print(f"Number of vulnerabilities found: {vulnerabilities_count}")
+                        try:
+                            scan_details = client.get_scan_by_scan_id(org_id, scan_id)
+                        except requests.HTTPError as http_err:
+                            logger.error(f"HTTP error occurred: {http_err}")
+                            print(f"\nResponse: {http_err.response.text}")
+                            break
+                        except Exception as e:
+                            logger.error(f"Error occurred: {str(e)}")
+                            break
 
-                if args.fail_on_vulns and vulnerabilities_count > 0:
-                    print("Vulnerabilities found. Failing the pipeline.")
-                    sys.exit(1)
+                        status = scan_details.get('scan', {}).get('status', 'N/A')
+                        results = scan_details.get('scan', {}).get('results', [])
+
+                        new_findings = []
+
+                        for result in results:
+                            scanner_name = result.get('scanner', 'N/A')
+                            findings_list = result.get('findings', [])
+
+                            for finding in findings_list:
+                                finding_entry = (
+                                    scanner_name,
+                                    finding.get('path', 'N/A'),
+                                    finding.get('vuln', 'N/A'),
+                                    finding.get('severity', 'N/A')
+                                )
+                                if finding_entry not in current_findings:
+                                    current_findings.add(finding_entry)
+                                    new_findings.append(finding_entry)
+
+                        if args.format == 'json':
+                            print(json.dumps(list(current_findings), indent=4))
+                        else:
+                            print_status_and_findings(status, list(current_findings), loading_index)
+
+                        loading_index += 1
+
+                        if status in ['COMPLETED', 'FAILED']:
+                            if current_findings:
+                                print(f"\nScan Status: {status}")
+                                print(f"{Fore.YELLOW}Number of vulnerabilities found: {len(current_findings)}{Style.RESET_ALL}")
+                            else:
+                                print(f"\nScan Status: {status}")
+                                print(f"{Fore.GREEN}No Vulns Found{Style.RESET_ALL}")
+                            
+                            if status == 'COMPLETED':
+                                try:
+                                    sarif_results = client.get_scan_results_sarif(org_id, scan_id)
+                                    with open('results.sarif', 'w') as sarif_file:
+                                        json.dump(sarif_results, sarif_file, indent=4)
+                                    print("SARIF results saved to 'results.sarif'.")
+                                except Exception as e:
+                                    logger.error(f"Failed to fetch or save SARIF results: {str(e)}")
+                                    print("Failed to fetch or save SARIF results.")
+                            
+                            if args.fail_on_vulns:
+                                vulnerabilities_count = len(current_findings)
+                                if vulnerabilities_count > 0:
+                                    print("Vulnerabilities found. Failing the pipeline.")
+                                    sys.exit(1)
+                            break
+
+                else:
+                    # Non-Sync Mode:
+                    while True:
+                        time.sleep(10)
+                        scan_details = client.get_scan_by_scan_id(org_id, scan_id)
+                        status = scan_details.get('scan', {}).get('status', 'N/A')
+                        if status == 'COMPLETED':
+                            print("Scan completed successfully.")
+                            break
+                        elif status == 'FAILED':
+                            print("Scan failed.")
+                            sys.exit(0)
+                        else:
+                            print(f"Scan status: {status}. Waiting...")
+
+                    sarif_results = client.get_scan_results_sarif(org_id, scan_id)
+                    with open('results.sarif', 'w') as sarif_file:
+                        json.dump(sarif_results, sarif_file, indent=4)
+
+                    vulnerabilities_count = sum(len(run.get('results', [])) for run in sarif_results.get('runs', []))
+                    print(f"Number of vulnerabilities found: {vulnerabilities_count}")
+
+                    if args.fail_on_vulns and vulnerabilities_count > 0:
+                        print("Vulnerabilities found. Failing the pipeline.")
+                        sys.exit(0)
             else:
                 print("Unable to start the scan.")
-                sys.exit(1)
+                sys.exit(0)
 
 
         elif args.command == 'get':

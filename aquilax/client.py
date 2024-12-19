@@ -68,9 +68,10 @@ class APIClient:
         response.raise_for_status()
         return response.json()
 
-    def start_scan(self, org_id, group_id, git_uri, scanners, public, frequency, tags):
+    def start_scan(self, org_id, group_id, git_uri, branch, scanners, public, frequency, tags):
         data = {
             'git_uri': git_uri,
+            'branch': branch,
             'terms': True,
             'scanners': scanners,
             'public': public,
