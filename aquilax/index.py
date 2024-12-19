@@ -64,7 +64,7 @@ def print_status_and_findings(status, findings, loading_index):
         table = tabulate(
             colored_findings,
             headers=["Scanner", "Path", "Vulnerability", "Severity"],
-            tablefmt="grid"
+            tablefmt="rounded_grid"
         )
         print(f"\nFindings:\n{table}")
 
@@ -76,7 +76,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.32"
+        version = "1.1.33"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -103,12 +103,12 @@ def main():
     ci_parser.add_argument('--org-id', help='Organization ID')
     ci_parser.add_argument('--group-id', help='Group ID')
     ci_parser.add_argument('--scanners', nargs='+', default=[
-        'pii_scanner', 'secret_scanner', 'iac_scanner', 'sast_scanner',
-        'sca_scanner', 'container_scanner', 'image_scanner', 'cicd_scanner'
+        'pii_scanner', 'secret_scanner', 'iac_scanner', 'sast_scanner', 'compliance_scanner',
+        'sca_scanner', 'container_scanner', 'malware_scanner'
     ], help='Scanners to use')
     ci_parser.add_argument('--public', type=bool, default=True, help='Set scan visibility to public')
     ci_parser.add_argument('--frequency', default='Once', help='Scan frequency')
-    ci_parser.add_argument('--tags', nargs='+', default=['aquilax', 'cli', 'ci'], help='Tags for the scan')
+    ci_parser.add_argument('--tags', nargs='+', default=['aquilax', 'cli', 'ci-initiated'], help='Tags for the scan')
     ci_parser.add_argument('--fail-on-vulns', action='store_true', help='Fail the pipeline if vulnerabilities are found')
     ci_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
     ci_parser.add_argument('--sync', action='store_true', help='Enable sync mode to fetch scan results periodically') 
@@ -253,7 +253,7 @@ def main():
                     findings_table = tabulate(
                         all_findings,
                         headers=["Scanner", "Path", "Vulnerability", "Severity"],
-                        tablefmt="grid"
+                        tablefmt="rounded_grid"
                     )
                     print(f"\nFindings:\n{findings_table}")
 
@@ -403,7 +403,7 @@ def main():
                 sys.exit(1)
 
             # Debugging
-            print(f"DEBUG: org_id={org_id}, group_id={group_id}, git={args.git}, branch={args.branch}, scanners={args.scanners}, public={args.public}, frequency={args.frequency}, tags={args.tags}, format={args.format}")
+            print(f"Branch: {args.branch}")
 
             scan_response = client.start_scan(
                 org_id,
@@ -610,7 +610,7 @@ def main():
                     table = tabulate(
                         all_findings,
                         headers=["Scanner", "Path", "Vulnerability", "Severity"],
-                        tablefmt="grid"
+                        tablefmt="rounded_grid"
                     )
                     print(table)
 
