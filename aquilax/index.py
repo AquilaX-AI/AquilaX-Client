@@ -10,6 +10,7 @@ from tabulate import tabulate
 import time
 import colorama
 from colorama import Fore, Style
+import re
 
 colorama.init(autoreset=True)
 CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
@@ -76,11 +77,21 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.34"
+        version = "1.1.35"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
         return "Unknown"
+
+def format_bold_text(text):
+    pattern = r'\*\*(.*?)\*\*'
+    
+    def replacer(match):
+        inner_text = match.group(1)
+        return f"{Fore.BLUE}{Style.BRIGHT}**{inner_text}**{Style.RESET_ALL}"
+    
+    formatted_text = re.sub(pattern, replacer, text)
+    return formatted_text
 
 def main():
     parser = argparse.ArgumentParser(description="Aquilax API Client")
@@ -112,6 +123,8 @@ def main():
     ci_parser.add_argument('--fail-on-vulns', action='store_true', help='Fail the pipeline if vulnerabilities are found')
     ci_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
     ci_parser.add_argument('--sync', action='store_true', help='Enable sync mode to fetch scan results periodically') 
+    ci_parser.add_argument('--output-dir', default='.', help='Directory to save the PDF report')
+    ci_parser.add_argument('--save-pdf', action='store_true', help='Save the PDF report locally')
 
     # Pull command
     pull_parser = subparsers.add_parser('pull', help='Fetch scan by scan_id')
@@ -164,7 +177,7 @@ def main():
     get_groups_parser.add_argument('--org-id', default=config.get('org_id'), help='Organization ID')
 
     # Get All Scans command
-    get_scans_parser = get_subparsers.add_parser('scans', help='Get all scans for an organization')
+    get_scans_parser = subparsers.add_parser('scans', help='Get all scans for an organization')
     get_scans_parser.add_argument('--org-id', help='Organization ID')
     get_scans_parser.add_argument('--page', type=int, default=1, help='Page number to retrieve (default is 1)')
 
@@ -380,6 +393,8 @@ def main():
 
                         if status in ['COMPLETED', 'FAILED']:
                             security_policy = scan_details.get('scan', {}).get('security_policy', {})
+                            if not security_policy:
+                                print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
                             thresholds = security_policy.get('threshold', {})
                             total_threshold = thresholds.get('total', sys.maxsize)
                             high_threshold = thresholds.get('HIGH', sys.maxsize)
@@ -420,6 +435,10 @@ def main():
                                 else:
                                     print(f"\nScan Status: {status}")
                                     print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
+
+                                if args.fail_on_vulns:
+                                    print("Vulnerabilities found. Failing the pipeline.")
+                                    sys.exit(1)
                             break
 
             else:
@@ -441,16 +460,26 @@ def main():
             # Debugging
             print(f"Branch: {args.branch}")
 
-            scan_response = client.start_scan(
-                org_id,
-                group_id,
-                args.git,
-                args.branch,
-                {scanner: True for scanner in args.scanners},
-                args.public,
-                args.frequency,
-                args.tags
-            )
+            try:
+                scan_response = client.start_scan(
+                    org_id,
+                    group_id,
+                    args.git,
+                    args.branch,
+                    {scanner: True for scanner in args.scanners},
+                    args.public,
+                    args.frequency,
+                    args.tags
+                )
+            except requests.RequestException as req_err:
+                logger.error(f"API request failed: {str(req_err)}")
+                print(f"{Fore.RED}API request failed: {str(req_err)}{Style.RESET_ALL}")
+                sys.exit(0)
+            except Exception as e:
+                logger.error(f"Unexpected error during scan initiation: {str(e)}")
+                print(f"{Fore.RED}Unexpected error: {str(e)}{Style.RESET_ALL}")
+                sys.exit(0) 
+
             scan_id = scan_response.get('scan_id')
 
             if scan_id:
@@ -558,7 +587,17 @@ def main():
                     # Non-Sync Mode:
                     while True:
                         time.sleep(10)
-                        scan_details = client.get_scan_by_scan_id(org_id, scan_id)
+                        try:
+                            scan_details = client.get_scan_by_scan_id(org_id, scan_id)
+                        except requests.RequestException as req_err:
+                            logger.error(f"API request failed while fetching scan details: {str(req_err)}")
+                            print(f"{Fore.RED}API request failed: {str(req_err)}{Style.RESET_ALL}")
+                            sys.exit(0)
+                        except Exception as e:
+                            logger.error(f"Unexpected error while fetching scan details: {str(e)}")
+                            print(f"{Fore.RED}Unexpected error: {str(e)}{Style.RESET_ALL}")
+                            sys.exit(0)
+
                         status = scan_details.get('scan', {}).get('status', 'N/A')
                         if status == 'COMPLETED':
                             print("Scan completed successfully.")
@@ -629,8 +668,37 @@ def main():
                         logger.error(f"Failed to fetch or save SARIF results: {str(e)}")
                         print("Failed to fetch or save SARIF results.")
 
+                try:
+                    executive_summary = client.get_executive_summary(org_id, scan_id)
+                    print("\n--------------")
+                    print("**Executive Summary:**")
+                    print("--------------")
+                    summary_text = executive_summary.get('response', 'No summary available.')
+                    formatted_summary = format_bold_text(summary_text)
+                    print(formatted_summary)
+
+                except requests.RequestException as req_err:
+                    logger.error(f"Failed to fetch executive summary: {str(req_err)}")
+                    print(f"{Fore.RED}Failed to fetch executive summary: {str(req_err)}{Style.RESET_ALL}")
+                except Exception as e:
+                    logger.error(f"Unexpected error while fetching executive summary: {str(e)}")
+                    print(f"{Fore.RED}Unexpected error while fetching executive summary: {str(e)}{Style.RESET_ALL}")
+
+                try:
+                    dashboard_link = f"https://aquilax.ai/scan/{org_id}/{scan_id}?group_id={group_id}"
+                    pdf_link = f"{client.base_url}/api/v1/organization/{org_id}/scan/{scan_id}/report"
+                    print("\n--------------")
+                    print(f"View the full scan results on the dashboard: {Fore.BLUE}{dashboard_link}{Style.RESET_ALL}")
+                    print("--------------")
+                    print(f"Download the PDF report from: {Fore.BLUE}{pdf_link}{Style.RESET_ALL}")
+                    print("\n")
+
+                except Exception as e:
+                    logger.error(f"Failed to construct dashboard link: {str(e)}")
+                    print(f"{Fore.RED}Failed to construct dashboard link: {str(e)}{Style.RESET_ALL}")
+
             else:
-                print("Unable to start the scan.")
+                print(f"{Fore.RED}Unable to start the scan.{Style.RESET_ALL}")
                 sys.exit(0)
 
 
