@@ -76,7 +76,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.33"
+        version = "1.1.34"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -312,7 +312,7 @@ def main():
 
             # Start Scan
             scan_response = client.start_scan(
-                org_id, group_id, args.git, {scanner: True for scanner in args.scanners}, args.public, args.frequency, args.tags
+                org_id, group_id, args.git, args.branch, {scanner: True for scanner in args.scanners}, args.public, args.frequency, args.tags
             )
             scan_id = scan_response.get('scan_id')
             project_id = scan_response.get('project_id')
@@ -365,7 +365,7 @@ def main():
                                     scanner_name,
                                     finding.get('path', 'N/A'),
                                     finding.get('vuln', 'N/A'),
-                                    finding.get('severity', 'N/A')
+                                    finding.get('severity', 'N/A').upper()
                                 )
                                 if finding_entry not in current_findings:
                                     current_findings.add(finding_entry)
@@ -379,16 +379,52 @@ def main():
                         loading_index += 1
 
                         if status in ['COMPLETED', 'FAILED']:
-                            if current_findings:
+                            security_policy = scan_details.get('scan', {}).get('security_policy', {})
+                            thresholds = security_policy.get('threshold', {})
+                            total_threshold = thresholds.get('total', sys.maxsize)
+                            high_threshold = thresholds.get('HIGH', sys.maxsize)
+                            medium_threshold = thresholds.get('MEDIUM', sys.maxsize)
+                            low_threshold = thresholds.get('LOW', sys.maxsize)
+
+                            severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
+                            for _, _, _, severity in current_findings:
+                                if severity in severity_counts:
+                                    severity_counts[severity] += 1
+                                else:
+                                    severity_counts['UNKNOWN'] += 1
+
+                            total_findings = sum(severity_counts.values())
+
+                            fail = False
+                            fail_reasons = []
+
+                            if total_findings >= total_threshold:
+                                fail = True
+                                fail_reasons.append(f"Total findings ({total_findings}) >= threshold ({total_threshold})")
+
+                            for severity in ['HIGH', 'MEDIUM', 'LOW', 'CRITICAL', 'UNKNOWN']:
+                                count = severity_counts.get(severity, 0)
+                                threshold = thresholds.get(severity, sys.maxsize)
+                                if count >= threshold:
+                                    fail = True
+                                    fail_reasons.append(f"{severity} findings ({count}) >= threshold ({threshold})")
+
+                            if fail:
                                 print(f"\nScan Status: {status}")
-                                print(f"{Fore.YELLOW}Number of vulnerabilities found:: {len(current_findings)}{Style.RESET_ALL}")
+                                print(f"{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
+                                sys.exit(1)
                             else:
-                                print(f"\nScan Status: {status}")
-                                print(f"{Fore.GREEN}No Vulns Found{Style.RESET_ALL}")
+                                if current_findings:
+                                    print(f"\nScan Status: {status}")
+                                    print(f"{Fore.YELLOW}Number of vulnerabilities found: {len(current_findings)}{Style.RESET_ALL}")
+                                else:
+                                    print(f"\nScan Status: {status}")
+                                    print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
                             break
 
             else:
                 print("Unable to start the scan.")
+                sys.exit(0)
 
         elif args.command == 'ci-scan':
             org_id = args.org_id or config.get('org_id')
@@ -396,11 +432,11 @@ def main():
 
             if not org_id:
                 print("Organization ID is not set. Please provide it using --org-id or set a default using --set-org.")
-                sys.exit(1)
+                sys.exit(0)
 
             if not group_id:
                 print("Group ID is not set. Please provide it using --group-id or set a default using --set-group.")
-                sys.exit(1)
+                sys.exit(0)
 
             # Debugging
             print(f"Branch: {args.branch}")
@@ -434,14 +470,13 @@ def main():
                         except requests.HTTPError as http_err:
                             logger.error(f"HTTP error occurred: {http_err}")
                             print(f"\nResponse: {http_err.response.text}")
-                            break
+                            sys.exit(0)
                         except Exception as e:
                             logger.error(f"Error occurred: {str(e)}")
-                            break
+                            sys.exit(0)
 
                         status = scan_details.get('scan', {}).get('status', 'N/A')
                         results = scan_details.get('scan', {}).get('results', [])
-
                         new_findings = []
 
                         for result in results:
@@ -453,7 +488,7 @@ def main():
                                     scanner_name,
                                     finding.get('path', 'N/A'),
                                     finding.get('vuln', 'N/A'),
-                                    finding.get('severity', 'N/A')
+                                    finding.get('severity', 'N/A').upper()
                                 )
                                 if finding_entry not in current_findings:
                                     current_findings.add(finding_entry)
@@ -467,26 +502,54 @@ def main():
                         loading_index += 1
 
                         if status in ['COMPLETED', 'FAILED']:
-                            if current_findings:
-                                print(f"\nScan Status: {status}")
-                                print(f"{Fore.YELLOW}Number of vulnerabilities found: {len(current_findings)}{Style.RESET_ALL}")
+                            security_policy = scan_details.get('scan', {}).get('security_policy', {})
+                            if not security_policy:
+                                print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
+                            thresholds = security_policy.get('threshold', {})
+                            total_threshold = thresholds.get('total', sys.maxsize)
+                            high_threshold = thresholds.get('HIGH', sys.maxsize)
+                            medium_threshold = thresholds.get('MEDIUM', sys.maxsize)
+                            low_threshold = thresholds.get('LOW', sys.maxsize)
+
+                            print("\n**Security Policy Thresholds:**")
+                            print(f"  - Total: {total_threshold}")
+                            print(f"  - HIGH: {high_threshold}")
+                            print(f"  - MEDIUM: {medium_threshold}")
+                            print(f"  - LOW: {low_threshold}\n")
+
+                            severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
+                            for _, _, _, severity in current_findings:
+                                if severity in severity_counts:
+                                    severity_counts[severity] += 1
+                                else:
+                                    severity_counts['UNKNOWN'] += 1
+
+                            total_findings = sum(severity_counts.values())
+
+                            fail = False
+                            fail_reasons = []
+
+                            if total_findings >= total_threshold:
+                                fail = True
+                                fail_reasons.append(f"Total findings ({total_findings}) >= threshold ({total_threshold})")
+
+                            for severity in ['HIGH', 'MEDIUM', 'LOW', 'CRITICAL', 'UNKNOWN']:
+                                count = severity_counts.get(severity, 0)
+                                threshold = thresholds.get(severity, sys.maxsize)
+                                if count >= threshold:
+                                    fail = True
+                                    fail_reasons.append(f"{severity} findings ({count}) >= threshold ({threshold})")
+
+                            if fail:
+                                print(f"{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
+                                sys.exit(1)
                             else:
-                                print(f"\nScan Status: {status}")
-                                print(f"{Fore.GREEN}No Vulns Found{Style.RESET_ALL}")
-                            
-                            if status == 'COMPLETED':
-                                try:
-                                    sarif_results = client.get_scan_results_sarif(org_id, scan_id)
-                                    with open('results.sarif', 'w') as sarif_file:
-                                        json.dump(sarif_results, sarif_file, indent=4)
-                                    print("SARIF results saved to 'results.sarif'.")
-                                except Exception as e:
-                                    logger.error(f"Failed to fetch or save SARIF results: {str(e)}")
-                                    print("Failed to fetch or save SARIF results.")
-                            
-                            if args.fail_on_vulns:
-                                vulnerabilities_count = len(current_findings)
-                                if vulnerabilities_count > 0:
+                                if current_findings:
+                                    print(f"{Fore.YELLOW}Number of vulnerabilities found: {len(current_findings)}{Style.RESET_ALL}")
+                                else:
+                                    print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
+
+                                if args.fail_on_vulns:
                                     print("Vulnerabilities found. Failing the pipeline.")
                                     sys.exit(1)
                             break
@@ -502,20 +565,70 @@ def main():
                             break
                         elif status == 'FAILED':
                             print("Scan failed.")
-                            sys.exit(0)
+                            sys.exit(1)
                         else:
                             print(f"Scan status: {status}. Waiting...")
 
-                    sarif_results = client.get_scan_results_sarif(org_id, scan_id)
-                    with open('results.sarif', 'w') as sarif_file:
-                        json.dump(sarif_results, sarif_file, indent=4)
+                    security_policy = scan_details.get('scan', {}).get('security_policy', {})
+                    if not security_policy:
+                        print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
+                    thresholds = security_policy.get('threshold', {})
+                    total_threshold = thresholds.get('total', sys.maxsize)
+                    high_threshold = thresholds.get('HIGH', sys.maxsize)
+                    medium_threshold = thresholds.get('MEDIUM', sys.maxsize)
+                    low_threshold = thresholds.get('LOW', sys.maxsize)
 
-                    vulnerabilities_count = sum(len(run.get('results', [])) for run in sarif_results.get('runs', []))
-                    print(f"Number of vulnerabilities found: {vulnerabilities_count}")
+                    print("\n**Security Policy Thresholds:**")
+                    print(f"  - Total: {total_threshold}")
+                    print(f"  - HIGH: {high_threshold}")
+                    print(f"  - MEDIUM: {medium_threshold}")
+                    print(f"  - LOW: {low_threshold}\n")
 
-                    if args.fail_on_vulns and vulnerabilities_count > 0:
-                        print("Vulnerabilities found. Failing the pipeline.")
-                        sys.exit(0)
+                    severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
+                    results = scan_details.get('scan', {}).get('results', [])
+                    for result in results:
+                        findings = result.get('findings', [])
+                        for finding in findings:
+                            severity = finding.get('severity', 'UNKNOWN').upper()
+                            if severity in severity_counts:
+                                severity_counts[severity] += 1
+                            else:
+                                severity_counts['UNKNOWN'] += 1
+
+                    total_findings = sum(severity_counts.values())
+
+                    fail = False
+                    fail_reasons = []
+
+                    if total_findings >= total_threshold:
+                        fail = True
+                        fail_reasons.append(f"Total findings ({total_findings}) >= threshold ({total_threshold})")
+
+                    for severity in ['HIGH', 'MEDIUM', 'LOW', 'CRITICAL', 'UNKNOWN']:
+                        count = severity_counts.get(severity, 0)
+                        threshold = thresholds.get(severity, sys.maxsize)
+                        if count >= threshold:
+                            fail = True
+                            fail_reasons.append(f"{severity} findings ({count}) >= threshold ({threshold})")
+
+                    if fail:
+                        print(f"{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
+                        sys.exit(1)
+                    else:
+                        print(f"Number of vulnerabilities found: {total_findings}")
+                        if args.fail_on_vulns and total_findings > 0:
+                            print("Vulnerabilities found. Failing the pipeline.")
+                            sys.exit(1)
+
+                    try:
+                        sarif_results = client.get_scan_results_sarif(org_id, scan_id)
+                        with open('results.sarif', 'w') as sarif_file:
+                            json.dump(sarif_results, sarif_file, indent=4)
+                        print("SARIF results saved to 'results.sarif'.")
+                    except Exception as e:
+                        logger.error(f"Failed to fetch or save SARIF results: {str(e)}")
+                        print("Failed to fetch or save SARIF results.")
+
             else:
                 print("Unable to start the scan.")
                 sys.exit(0)
