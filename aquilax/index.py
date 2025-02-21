@@ -77,7 +77,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.35"
+        version = "1.1.36"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -685,8 +685,8 @@ def main():
                     print(f"{Fore.RED}Unexpected error while fetching executive summary: {str(e)}{Style.RESET_ALL}")
 
                 try:
-                    dashboard_link = f"https://aquilax.ai/scan/{org_id}/{scan_id}?group_id={group_id}"
-                    pdf_link = f"{client.base_url}/api/v1/organization/{org_id}/scan/{scan_id}/report"
+                    dashboard_link = f"https://aquilax.ai/app/scan/{org_id}/{scan_id}/{group_id}"
+                    pdf_link = f"{client.base_url}/organization/{org_id}/scan/{scan_id}/report"
                     print("\n--------------")
                     print(f"View the full scan results on the dashboard: {Fore.BLUE}{dashboard_link}{Style.RESET_ALL}")
                     print("--------------")
