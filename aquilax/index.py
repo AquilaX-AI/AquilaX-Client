@@ -31,6 +31,20 @@ def clear_console():
     else:
         os.system('clear')
 
+def format_bold_texts(text):
+    pattern = r'\*\*(.*?)\*\*'
+    colors = [Fore.GREEN]
+    counter = 0
+
+    def replacer(match):
+        nonlocal counter
+        inner_text = match.group(1)
+        color = colors[counter % len(colors)]
+        counter += 1
+        return f"{color}{Style.BRIGHT}**{inner_text}**{Style.RESET_ALL}"
+
+    return re.sub(pattern, replacer, text)
+
 def color_severity(severity):
     severity = severity.upper()
     if severity == 'CRITICAL':
@@ -77,7 +91,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.36"
+        version = "1.1.37"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -671,10 +685,10 @@ def main():
                 try:
                     executive_summary = client.get_executive_summary(org_id, scan_id)
                     print("\n--------------")
-                    print("**Executive Summary:**")
+                    print("Executive Summary:")
                     print("--------------")
                     summary_text = executive_summary.get('response', 'No summary available.')
-                    formatted_summary = format_bold_text(summary_text)
+                    formatted_summary = format_bold_texts(summary_text)
                     print(formatted_summary)
 
                 except requests.RequestException as req_err:
@@ -689,8 +703,8 @@ def main():
                     pdf_link = f"{client.base_url}/organization/{org_id}/scan/{scan_id}/report"
                     print("\n--------------")
                     print(f"View the full scan results on the dashboard: {Fore.BLUE}{dashboard_link}{Style.RESET_ALL}")
-                    print("--------------")
-                    print(f"Download the PDF report from: {Fore.BLUE}{pdf_link}{Style.RESET_ALL}")
+                    # print("--------------")
+                    # print(f"Download the PDF report from: {Fore.BLUE}{pdf_link}{Style.RESET_ALL}")
                     print("\n")
 
                 except Exception as e:
