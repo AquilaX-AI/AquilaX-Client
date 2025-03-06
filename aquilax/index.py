@@ -15,6 +15,12 @@ import re
 colorama.init(autoreset=True)
 CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
 
+ALL_SCANNERS = [
+    'pii_scanner', 'secret_scanner', 'iac_scanner', 'sast_scanner',
+    'sca_scanner', 'container_scanner', 'image_scanner', 'cicd_scanner'
+]
+
+
 def load_config():
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, 'r') as f:
@@ -91,7 +97,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.37"
+        version = "1.1.38"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -161,6 +167,17 @@ def main():
     group_parser.add_argument('--name', required=True, help='Name of the group')
     group_parser.add_argument('--description', default='To test all the prod apps', help='Description of the group')
     group_parser.add_argument('--tags', nargs='+', default=['scan', 'aquilax'], help='Tags for the group')
+
+    # File-scan command
+    file_scan_parser = subparsers.add_parser('file-scan', help='Upload and scan a zip file')
+    file_scan_parser.add_argument('file', help='Path to the zip file to scan')
+    file_scan_parser.add_argument('--org-id', help='Organization ID (if not provided, default from config is used)')
+    file_scan_parser.add_argument('--group-id', help='Group ID (if not provided, default from config is used)')
+    file_scan_parser.add_argument('--scanners', nargs='+', default=['pii_scanner', 'secret_scanner'], 
+                                  help='Scanners to use (e.g., pii_scanner secret_scanner)')
+    file_scan_parser.add_argument('--tags', nargs='+', default=['aquilax', 'file-scan'], 
+                                  help='Tags for the scan')
+
 
     # Scan command
     scan_parser = subparsers.add_parser('scan', help='Start a scan with Git URI')
@@ -458,6 +475,40 @@ def main():
             else:
                 print("Unable to start the scan.")
                 sys.exit(0)
+
+
+        elif args.command == 'file-scan':
+            org_id = args.org_id or config.get('org_id')
+            group_id = args.group_id or config.get('group_id')
+            if not org_id:
+                print("Organization ID is required. Please provide it with --org-id or set a default using --set-org.")
+                return
+            if not group_id:
+                print("Group ID is required. Please provide it with --group-id or set a default using --set-group.")
+                return
+
+            scanners = args.scanners
+            if scanners == ['all']:
+                scanners = ALL_SCANNERS
+
+            client = APIClient()
+            try:
+                response = client.start_file_scan(
+                    org_id,
+                    group_id,
+                    args.file, 
+                    {scanner: True for scanner in scanners},
+                    args.tags
+                )
+                file_scan_id = response.get('scan_id')
+                if file_scan_id:
+                    print(f"File-scan started successfully with Scan ID: {file_scan_id}")
+                else:
+                    print("File-scan request completed, but no Scan ID was returned.")
+            except Exception as e:
+                print(f"Error starting file scan: {str(e)}")
+
+
 
         elif args.command == 'ci-scan':
             org_id = args.org_id or config.get('org_id')

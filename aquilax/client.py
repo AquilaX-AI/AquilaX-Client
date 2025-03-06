@@ -85,6 +85,20 @@ class APIClient:
         response.raise_for_status()
         return response.json()
 
+    def start_file_scan(self, org_id, group_id, file_path, scanners, tags):
+        fields = {
+            'scanners': json.dumps(scanners),
+            'tags': json.dumps(tags),
+            'file': (os.path.basename(file_path), open(file_path, 'rb'), 'application/zip')
+        }
+        m = MultipartEncoder(fields=fields)
+        headers = self.headers.copy()
+        headers['Content-Type'] = m.content_type
+        url = f"{self.base_url}/organization/{org_id}/group/{group_id}/file-scan"
+        response = requests.post(url, headers=headers, data=m)
+        response.raise_for_status()
+        return response.json()
+
     def get_scan_by_id(self, org_id, group_id, project_id, scan_id):
         headers = self.headers.copy()
         response = requests.get(f"{self.base_url}/organization/{org_id}/group/{group_id}/project/{project_id}/scan/{scan_id}", headers=headers)
