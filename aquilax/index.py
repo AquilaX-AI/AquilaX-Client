@@ -11,6 +11,8 @@ import time
 import colorama
 from colorama import Fore, Style
 import re
+import tempfile
+import zipfile
 
 colorama.init(autoreset=True)
 CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
@@ -97,7 +99,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.38"
+        version = "1.1.39"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -169,8 +171,8 @@ def main():
     group_parser.add_argument('--tags', nargs='+', default=['scan', 'aquilax'], help='Tags for the group')
 
     # File-scan command
-    file_scan_parser = subparsers.add_parser('file-scan', help='Upload and scan a zip file')
-    file_scan_parser.add_argument('file', help='Path to the zip file to scan')
+    file_scan_parser = subparsers.add_parser('file-scan', help='Upload and scan a zip file or a directory')
+    file_scan_parser.add_argument('file', help='Path to the zip file or directory to scan')
     file_scan_parser.add_argument('--org-id', help='Organization ID (if not provided, default from config is used)')
     file_scan_parser.add_argument('--group-id', help='Group ID (if not provided, default from config is used)')
     file_scan_parser.add_argument('--scanners', nargs='+', default=['pii_scanner', 'secret_scanner'], 
@@ -487,6 +489,19 @@ def main():
                 print("Group ID is required. Please provide it with --group-id or set a default using --set-group.")
                 return
 
+            zip_file_path = args.file
+            if os.path.isdir(args.file):
+                print(f"Creating a ZIP archive for scanning.")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_zip:
+                    zip_file_path = tmp_zip.name
+                with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for root, dirs, files in os.walk(args.file):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, args.file)
+                            zipf.write(file_path, arcname)
+                print(f"Created ZIP archive at {zip_file_path}")
+
             scanners = args.scanners
             if scanners == ['all']:
                 scanners = ALL_SCANNERS
@@ -496,18 +511,20 @@ def main():
                 response = client.start_file_scan(
                     org_id,
                     group_id,
-                    args.file, 
+                    zip_file_path,
                     {scanner: True for scanner in scanners},
                     args.tags
                 )
                 file_scan_id = response.get('scan_id')
                 if file_scan_id:
-                    print(f"File-scan started successfully with Scan ID: {file_scan_id}")
+                    print(f"File scan started successfully with Scan ID: {file_scan_id}")
                 else:
                     print("File-scan request completed, but no Scan ID was returned.")
             except Exception as e:
                 print(f"Error starting file scan: {str(e)}")
-
+            finally:
+                if os.path.isdir(args.file):
+                    os.remove(zip_file_path)
 
 
         elif args.command == 'ci-scan':
