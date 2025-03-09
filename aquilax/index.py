@@ -99,7 +99,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.39"
+        version = "1.1.40"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -491,16 +491,21 @@ def main():
 
             zip_file_path = args.file
             if os.path.isdir(args.file):
-                print(f"Creating a ZIP archive for scanning.")
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_zip:
-                    zip_file_path = tmp_zip.name
+                if args.file in [".", "./"]:
+                    folder_path = os.getcwd()
+                    folder_name = os.path.basename(folder_path)
+                else:
+                    folder_name = os.path.basename(os.path.normpath(args.file))
+                    
+                zip_file_path = os.path.join(tempfile.gettempdir(), f"{folder_name}.zip")
+                print(f"Directory: {args.file}. Creating a ZIP archive named {folder_name}.zip for scanning.")
                 with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                     for root, dirs, files in os.walk(args.file):
                         for file in files:
                             file_path = os.path.join(root, file)
                             arcname = os.path.relpath(file_path, args.file)
                             zipf.write(file_path, arcname)
-                print(f"Created ZIP archive at {zip_file_path}")
+                print(f"Created ZIP archive at {zip_file_path} - Starting Scan...")
 
             scanners = args.scanners
             if scanners == ['all']:
@@ -523,7 +528,7 @@ def main():
             except Exception as e:
                 print(f"Error starting file scan: {str(e)}")
             finally:
-                if os.path.isdir(args.file):
+                if os.path.isdir(args.file) and os.path.exists(zip_file_path):
                     os.remove(zip_file_path)
 
 
