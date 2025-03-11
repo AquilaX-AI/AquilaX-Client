@@ -99,7 +99,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.40"
+        version = "1.1.41"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")

@@ -101,7 +101,7 @@ class APIClient:
 
     def get_scan_by_id(self, org_id, group_id, project_id, scan_id):
         headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/organization/{org_id}/group/{group_id}/project/{project_id}/scan/{scan_id}", headers=headers)
+        response = requests.get(f"{self.base_url}/organization/{org_id}/scan/{scan_id}", headers=headers)
         response.raise_for_status()
         return response.json()
 
