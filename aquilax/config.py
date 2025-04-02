@@ -7,7 +7,7 @@ class ClientConfig:
     _config = {
         'apiToken': os.getenv('AQUILAX_AUTH', ''),
         'baseUrl': 'https://aquilax.ai',
-        'baseApiPath': '/api/v1',
+        'baseApiPath': '/api',
     }
 
     @classmethod

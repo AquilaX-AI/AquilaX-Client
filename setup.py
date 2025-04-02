@@ -28,7 +28,7 @@ setup(
     long_description_content_type='text/markdown',
     url="https://github.com/AquilaX-AI/AquilaX-Client",
     author="Omer",
-    author_email="mdomerkhan8000@gmail.com",
+    author_email="admin@aquilax.io",
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: Apache Software License',

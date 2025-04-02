@@ -36,7 +36,7 @@ class APIClient:
             print("If you don't have an API token, please visit https://aquilax.ai to generate one.")
 
     def create_organization(self, org_name, description, business_name, website, org_pic=None, usage='Business'):
-        default_org_pic = "https://i.pinimg.com/236x/a2/c2/64/a2c264977d561691c1ece4921704ae91.jpg"
+        default_org_pic = "https://static.aquilax.ai/assets/img/aquilax-blue-to-white.png"
         
         data = {
             'name': org_name,
@@ -51,7 +51,7 @@ class APIClient:
         headers = self.headers.copy()
         headers['Content-Type'] = m.content_type
 
-        response = requests.post(f"{self.base_url}/organization", headers=headers, data=m)
+        response = requests.post(f"{self.base_url}/v1/organization", headers=headers, data=m)
         response.raise_for_status()
         return response.json()
 
@@ -64,7 +64,7 @@ class APIClient:
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
 
-        response = requests.post(f"{self.base_url}/organization/{org_id}/group", headers=headers, json=data)
+        response = requests.post(f"{self.base_url}/v1/organization/{org_id}/group", headers=headers, json=data)
         response.raise_for_status()
         return response.json()
 
@@ -72,16 +72,12 @@ class APIClient:
         data = {
             'git_uri': git_uri,
             'branch': branch,
-            'terms': True,
-            'scanners': scanners,
-            'public': public,
-            'frequency': frequency,
-            'tags': tags,
+            'initiated': "cli"
         }
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
 
-        response = requests.post(f"{self.base_url}/organization/{org_id}/group/{group_id}/scan", headers=headers, json=data)
+        response = requests.post(f"{self.base_url}/v2/scan?org={org_id}&group={group_id}", headers=headers, json=data)
         response.raise_for_status()
         return response.json()
 
@@ -94,25 +90,25 @@ class APIClient:
         m = MultipartEncoder(fields=fields)
         headers = self.headers.copy()
         headers['Content-Type'] = m.content_type
-        url = f"{self.base_url}/organization/{org_id}/group/{group_id}/file-scan"
+        url = f"{self.base_url}/v1/organization/{org_id}/group/{group_id}/file-scan"
         response = requests.post(url, headers=headers, data=m)
         response.raise_for_status()
         return response.json()
 
     def get_scan_by_id(self, org_id, group_id, project_id, scan_id):
         headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/organization/{org_id}/scan/{scan_id}", headers=headers)
+        response = requests.get(f"{self.base_url}/v2/scan/{scan_id}?org={org_id}&group={group_id}", headers=headers)
         response.raise_for_status()
         return response.json()
 
     def get_all_orgs(self):
         headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/organization", headers=headers)
+        response = requests.get(f"{self.base_url}/v1/organization", headers=headers)
         response.raise_for_status()
         return response.json()
 
     def get_all_groups(self, org_id):
-        response = requests.get(f"{self.base_url}/organization/{org_id}/group", headers=self.headers)
+        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/group", headers=self.headers)
         response.raise_for_status()
         return response.json()
 
@@ -123,7 +119,7 @@ class APIClient:
             'limit': limit,
             'page': page
         }
-        response = requests.get(f"{self.base_url}/organization/{org_id}/scans", headers=headers, params=params)
+        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scans", headers=headers, params=params)
         response.raise_for_status()
         
         scans_data = response.json()
@@ -131,19 +127,19 @@ class APIClient:
     
     def get_scan_by_scan_id(self, org_id, scan_id):
         headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/organization/{org_id}/scan/{scan_id}", headers=headers)
+        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}", headers=headers)
         response.raise_for_status()
         return response.json()
     
     def get_scan_results_sarif(self, org_id, scan_id):
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
-        response = requests.get(f"{self.base_url}/organization/{org_id}/scan/{scan_id}?format=sarif", headers=headers)
+        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}?format=sarif", headers=headers)
         response.raise_for_status()
         return response.json()
     
     def get_executive_summary(self, org_id, scan_id):
         headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/organization/{org_id}/scan/{scan_id}/generate_executive_summary", headers=headers)
+        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}/generate_executive_summary", headers=headers)
         response.raise_for_status()
         return response.json()
