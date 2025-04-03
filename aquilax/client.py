@@ -67,13 +67,6 @@ class APIClient:
         response = requests.get(f"{self.base_url}/v2/scan/{scan_id}?org={org_id}&group={group_id}", headers=headers)
         response.raise_for_status()
         return response.json()
-
-
-    def get_scan_by_scan_id(self, org_id, scan_id):
-        headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}", headers=headers)
-        response.raise_for_status()
-        return response.json()
     
     def get_scan_results_sarif(self, org_id, scan_id):
         headers = self.headers.copy()

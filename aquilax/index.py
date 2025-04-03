@@ -186,11 +186,6 @@ def main():
     get_groups_parser = get_subparsers.add_parser('groups', help='Get all groups for an organization')
     get_groups_parser.add_argument('--org-id', default=config.get('org_id'), help='Organization ID')
 
-    # Get All Scans command
-    get_scans_parser = subparsers.add_parser('scans', help='Get all scans for an organization')
-    get_scans_parser.add_argument('--org-id', help='Organization ID')
-    get_scans_parser.add_argument('--page', type=int, default=1, help='Page number to retrieve (default is 1)')
-
     # Add the login command
     login_parser = subparsers.add_parser('login', help='Login to Aquilax by setting the API token')
     login_parser.add_argument('token', help='API Token for authentication')
@@ -221,7 +216,7 @@ def main():
             return
 
         try:
-            scan_details = client.get_scan_by_scan_id(org_id, args.scan_id)
+            scan_details = client.get_scan_by_id(org_id, args.scan_id)
 
             if not scan_details or "scan" not in scan_details:
                 print("No scan details found.")
@@ -532,7 +527,7 @@ def main():
                         time.sleep(1)
 
                         try:
-                            scan_details = client.get_scan_by_scan_id(org_id, scan_id)
+                            scan_details = client.get_scan_by_id(org_id, group_id, scan_id)
                         except requests.HTTPError as http_err:
                             logger.error(f"HTTP error occurred: {http_err}")
                             print(f"\nResponse: {http_err.response.text}")
@@ -623,9 +618,9 @@ def main():
                 else:
                     # Non-Sync Mode:
                     while True:
-                        time.sleep(10)
+                        time.sleep(1)
                         try:
-                            scan_details = client.get_scan_by_scan_id(org_id, scan_id)
+                            scan_details = client.get_scan_by_id(org_id, group_id, scan_id)
                         except requests.RequestException as req_err:
                             logger.error(f"API request failed while fetching scan details: {str(req_err)}")
                             print(f"{Fore.RED}API request failed: {str(req_err)}{Style.RESET_ALL}")
