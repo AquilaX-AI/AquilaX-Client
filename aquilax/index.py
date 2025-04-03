@@ -99,7 +99,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.2.1"
+        version = "1.2.7"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -265,7 +265,7 @@ def main():
                             all_findings.append([
                                 scanner_name,
                                 finding.get('path', 'N/A'),
-                                finding.get('vuln', 'N/A'),
+                                finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
                                 finding.get('severity', 'N/A')
                             ])
                     findings_table = tabulate(
@@ -346,9 +346,9 @@ def main():
                             logger.error(f"Error occurred: {str(e)}")
                             break
 
-                        status = scan_details.get('scan', {}).get('status', 'N/A')
+                        status = scan_details.get('status', 'N/A')
 
-                        results = scan_details.get('scan', {}).get('results', [])
+                        results = scan_details.get('results', [])
                         new_findings = []
 
                         for result in results:
@@ -359,7 +359,7 @@ def main():
                                 finding_entry = (
                                     scanner_name,
                                     finding.get('path', 'N/A'),
-                                    finding.get('vuln', 'N/A'),
+                                    finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
                                     finding.get('severity', 'N/A').upper()
                                 )
                                 if finding_entry not in current_findings:
@@ -374,7 +374,7 @@ def main():
                         loading_index += 1
 
                         if status in ['COMPLETED', 'FAILED']:
-                            security_policy = scan_details.get('scan', {}).get('security_policy', {})
+                            security_policy = scan_details.get('security_policy', {})
                             if not security_policy:
                                 print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
                             thresholds = security_policy.get('threshold', {})
@@ -418,9 +418,6 @@ def main():
                                     print(f"\nScan Status: {status}")
                                     print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
 
-                                if args.fail_on_vulns:
-                                    print("Vulnerabilities found. Failing the pipeline.")
-                                    sys.exit(1)
                             break
 
             else:
@@ -536,8 +533,8 @@ def main():
                             logger.error(f"Error occurred: {str(e)}")
                             sys.exit(0)
 
-                        status = scan_details.get('scan', {}).get('status', 'N/A')
-                        results = scan_details.get('scan', {}).get('results', [])
+                        status = scan_details.get('status', 'N/A')
+                        results = scan_details.get('results', [])
                         new_findings = []
 
                         for result in results:
@@ -548,7 +545,7 @@ def main():
                                 finding_entry = (
                                     scanner_name,
                                     finding.get('path', 'N/A'),
-                                    finding.get('vuln', 'N/A'),
+                                    finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
                                     finding.get('severity', 'N/A').upper()
                                 )
                                 if finding_entry not in current_findings:
@@ -563,7 +560,7 @@ def main():
                         loading_index += 1
 
                         if status in ['COMPLETED', 'FAILED']:
-                            security_policy = scan_details.get('scan', {}).get('security_policy', {})
+                            security_policy = scan_details.get('security_policy', {})
                             if not security_policy:
                                 print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
                             thresholds = security_policy.get('threshold', {})
@@ -630,7 +627,7 @@ def main():
                             print(f"{Fore.RED}Unexpected error: {str(e)}{Style.RESET_ALL}")
                             sys.exit(0)
 
-                        status = scan_details.get('scan', {}).get('status', 'N/A')
+                        status = scan_details.get('status', 'N/A')
                         if status == 'COMPLETED':
                             print("Scan completed successfully.")
                             break
@@ -640,7 +637,7 @@ def main():
                         else:
                             print(f"Scan status: {status}. Waiting...")
 
-                    security_policy = scan_details.get('scan', {}).get('security_policy', {})
+                    security_policy = scan_details.get('security_policy', {})
                     if not security_policy:
                         print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
                     thresholds = security_policy.get('threshold', {})
@@ -656,7 +653,7 @@ def main():
                     print(f"  - LOW: {low_threshold}\n")
 
                     severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
-                    results = scan_details.get('scan', {}).get('results', [])
+                    results = scan_details.get('results', [])
                     for result in results:
                         findings = result.get('findings', [])
                         for finding in findings:
@@ -812,7 +809,7 @@ def main():
                             all_findings.append([
                                 scanner_name,
                                 finding.get('path', 'N/A'),
-                                finding.get('vuln', 'N/A'),
+                                finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
                                 finding.get('severity', 'N/A')
                             ])
 
