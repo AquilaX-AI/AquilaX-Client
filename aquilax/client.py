@@ -35,40 +35,7 @@ class APIClient:
             print("Please run 'aquilax login <token>' to set your API token.")
             print("If you don't have an API token, please visit https://aquilax.ai to generate one.")
 
-    def create_organization(self, org_name, description, business_name, website, org_pic=None, usage='Business'):
-        default_org_pic = "https://static.aquilax.ai/assets/img/aquilax-blue-to-white.png"
-        
-        data = {
-            'name': org_name,
-            'description': description,
-            'business_name': business_name,
-            'website': website,
-            'org_pic': org_pic if org_pic else default_org_pic,
-            'usage': usage,
-        }
-
-        m = MultipartEncoder(fields=data)
-        headers = self.headers.copy()
-        headers['Content-Type'] = m.content_type
-
-        response = requests.post(f"{self.base_url}/v1/organization", headers=headers, data=m)
-        response.raise_for_status()
-        return response.json()
-
-    def create_group(self, org_id, group_name, description, tags):
-        data = {
-            'name': group_name,
-            'description': description,
-            'tags': tags,
-        }
-        headers = self.headers.copy()
-        headers['Content-Type'] = 'application/json'
-
-        response = requests.post(f"{self.base_url}/v1/organization/{org_id}/group", headers=headers, json=data)
-        response.raise_for_status()
-        return response.json()
-
-    def start_scan(self, org_id, group_id, git_uri, branch, scanners, public, frequency, tags):
+    def start_scan(self, org_id, group_id, git_uri, branch):
         data = {
             'git_uri': git_uri,
             'branch': branch,
@@ -95,36 +62,13 @@ class APIClient:
         response.raise_for_status()
         return response.json()
 
-    def get_scan_by_id(self, org_id, group_id, project_id, scan_id):
+    def get_scan_by_id(self, org_id, group_id, scan_id):
         headers = self.headers.copy()
         response = requests.get(f"{self.base_url}/v2/scan/{scan_id}?org={org_id}&group={group_id}", headers=headers)
         response.raise_for_status()
         return response.json()
 
-    def get_all_orgs(self):
-        headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/v1/organization", headers=headers)
-        response.raise_for_status()
-        return response.json()
 
-    def get_all_groups(self, org_id):
-        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/group", headers=self.headers)
-        response.raise_for_status()
-        return response.json()
-
-    def get_all_scans(self, org_id, page=1):
-        headers = self.headers.copy()
-        limit = 50
-        params = {
-            'limit': limit,
-            'page': page
-        }
-        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scans", headers=headers, params=params)
-        response.raise_for_status()
-        
-        scans_data = response.json()
-        return scans_data.get('scans', [])
-    
     def get_scan_by_scan_id(self, org_id, scan_id):
         headers = self.headers.copy()
         response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}", headers=headers)

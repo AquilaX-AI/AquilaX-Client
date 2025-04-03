@@ -99,7 +99,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.1.41"
+        version = "1.2.1"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -135,13 +135,6 @@ def main():
     ci_parser.add_argument('git', help='Git repository URI')
     ci_parser.add_argument('--org-id', help='Organization ID')
     ci_parser.add_argument('--group-id', help='Group ID')
-    ci_parser.add_argument('--scanners', nargs='+', default=[
-        'pii_scanner', 'secret_scanner', 'iac_scanner', 'sast_scanner', 'compliance_scanner',
-        'sca_scanner', 'container_scanner', 'malware_scanner'
-    ], help='Scanners to use')
-    ci_parser.add_argument('--public', type=bool, default=True, help='Set scan visibility to public')
-    ci_parser.add_argument('--frequency', default='Once', help='Scan frequency')
-    ci_parser.add_argument('--tags', nargs='+', default=['aquilax', 'cli', 'ci-initiated'], help='Tags for the scan')
     ci_parser.add_argument('--fail-on-vulns', action='store_true', help='Fail the pipeline if vulnerabilities are found')
     ci_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
     ci_parser.add_argument('--sync', action='store_true', help='Enable sync mode to fetch scan results periodically') 
@@ -153,22 +146,6 @@ def main():
     pull_parser.add_argument('scan_id', help='Scan ID to pull')
     pull_parser.add_argument('--org-id', help='Organization ID (optional, if not provided, the default org ID will be used)')
     pull_parser.add_argument('--format', choices=['json', 'table', 'sarif'], default='table', help='Output format: json, sarif, or table')
-
-    # Organization command
-    org_parser = subparsers.add_parser('org', help='Create an organization')
-    org_parser.add_argument('--name', required=True, help='Name of the organization')
-    org_parser.add_argument('--description', default='Security Scanning', help='Description of the organization')
-    org_parser.add_argument('--business-name', default='Technologies', help='Business name of the organization')
-    org_parser.add_argument('--website', default='yourwebsite.com', help='Website of the organization')
-    org_parser.add_argument('--org-pic', default=None, help='Organization picture URL')
-    org_parser.add_argument('--usage', default='Business', help='Usage type of the organization')
-
-    # Group command
-    group_parser = subparsers.add_parser('group', help='Create a group')
-    group_parser.add_argument('--org-id', default=config.get('org_id'), help='Organization ID')
-    group_parser.add_argument('--name', required=True, help='Name of the group')
-    group_parser.add_argument('--description', default='To test all the prod apps', help='Description of the group')
-    group_parser.add_argument('--tags', nargs='+', default=['scan', 'aquilax'], help='Tags for the group')
 
     # File-scan command
     file_scan_parser = subparsers.add_parser('file-scan', help='Upload and scan a zip file or a directory')
@@ -328,23 +305,7 @@ def main():
     try:
         client = APIClient()
 
-        if args.command == 'org':
-            # Create Organization
-            org_response = client.create_organization(
-                args.name, args.description, args.business_name, args.website, args.org_pic, args.usage
-            )
-            org_id = org_response.get('org_id')
-            logger.info(f"Organization Created: {org_response}")
-
-        elif args.command == 'group':
-            # Create Group
-            group_response = client.create_group(
-                args.org_id, args.name, args.description, args.tags
-            )
-            group_id = group_response.get('group').get('_id')
-            logger.info(f"Group Created: {group_response}")
-
-        elif args.command == 'scan':
+        if args.command == 'scan':
             org_id = config.get('org_id')
             group_id = config.get('group_id')
 
@@ -357,20 +318,13 @@ def main():
                 return
 
             # Start Scan
-            scan_response = client.start_scan(
-                org_id, group_id, args.git, args.branch, {scanner: True for scanner in args.scanners}, args.public, args.frequency, args.tags
-            )
+            scan_response = client.start_scan(   org_id, group_id, args.git, args.branch  )
             scan_id = scan_response.get('scan_id')
-            project_id = scan_response.get('project_id')
 
-            if scan_id and project_id:
+            if scan_id:
                 scan_data = {
                     "Scan ID": scan_id,
-                    "Project ID": project_id,
-                    "Git URI": args.git,
-                    "Frequency": args.frequency,
-                    "Tags": ", ".join(args.tags),
-                    "Scanners": ", ".join([scanner for scanner in args.scanners])
+                    "Git URI": args.git
                 }
 
                 if args.format == 'json':
@@ -385,10 +339,10 @@ def main():
                     loading_index = 0
 
                     while True:
-                        time.sleep(0.5)
+                        time.sleep(0.3)
 
                         try:
-                            scan_details = client.get_scan_by_id(org_id, group_id, project_id, scan_id)
+                            scan_details = client.get_scan_by_id(org_id, group_id, scan_id)
                         except requests.HTTPError as http_err:
                             logger.error(f"HTTP error occurred: {http_err}")
                             print(f"\nResponse: {http_err.response.text}")
@@ -552,11 +506,7 @@ def main():
                     org_id,
                     group_id,
                     args.git,
-                    args.branch,
-                    {scanner: True for scanner in args.scanners},
-                    args.public,
-                    args.frequency,
-                    args.tags
+                    args.branch
                 )
             except requests.RequestException as req_err:
                 logger.error(f"API request failed: {str(req_err)}")
@@ -579,7 +529,7 @@ def main():
                     loading_index = 0
 
                     while True:
-                        time.sleep(10)
+                        time.sleep(1)
 
                         try:
                             scan_details = client.get_scan_by_scan_id(org_id, scan_id)
@@ -881,53 +831,6 @@ def main():
                         tablefmt="rounded_grid"
                     )
                     print(table)
-
-            elif args.get_command == 'groups':
-                groups_response = client.get_all_groups(args.org_id)
-                groups = groups_response.get('groups', [])
-
-                if not groups:
-                    print("No groups found for this organization.")
-                    return
-
-                groups_table_data = []
-                for group in groups:
-                    group_name = group.get('name', 'N/A')
-                    group_id = group.get('_id', 'N/A')
-                    description = group.get('description', 'N/A')
-                    tags = ', '.join(group.get('tags', []))
-                    groups_table_data.append([group_name, group_id, description, tags])
-
-                table = tabulate(groups_table_data, headers=["Group Name", "Group ID", "Description", "Tags"], tablefmt="grid")
-                print(f"\nGroups List for Organization ID: {args.org_id}")
-                print(table)
-                print("\n\n")
-
-            elif args.get_command == 'scans':
-                org_id = args.org_id or config.get('org_id')
-                if not org_id:
-                    print("Organization ID is required but not provided, and no default is set in the config.")
-                    return
-
-                scans_response = client.get_all_scans(org_id, page=args.page)
-                scans = scans_response
-
-                if not scans:
-                    print(f"No scans found for organization ID '{org_id}'.")
-                    return
-
-                scans_table_data = []
-                for scan in scans:
-                    scan_id = scan.get('_id', 'N/A')
-                    group_id = scan.get('group', 'N/A')
-                    git_uri = scan.get('git_uri', 'N/A')
-                    status = scan.get('status', 'N/A')
-                    scans_table_data.append([scan_id, group_id, git_uri, status])
-
-                table = tabulate(scans_table_data, headers=["Scan ID", "Group ID", "Git URI", "Status"], tablefmt="grid")
-                print(f"\nScans List for Organization ID: {org_id}")
-                print(table)
-                print("\n\n")
 
     except ValueError as ve:
         print(ve)
