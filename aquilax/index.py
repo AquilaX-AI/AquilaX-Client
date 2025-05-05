@@ -99,7 +99,7 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.2.7"
+        version = "1.2.8"
         return version
     except Exception as e:
         logger.error(f"Failed to get the version")
@@ -512,7 +512,7 @@ def main():
             scan_id = scan_response.get('scan_id')
 
             if scan_id:
-                print(f"Scan started with ID: {scan_id}. Waiting for completion...")
+                print(f"Scan started with ID: {scan_id}.")
 
                 if args.sync:
                     # Sync Mode:
@@ -614,28 +614,34 @@ def main():
 
                 else:
                     # Non-Sync Mode:
+                    print("Scanning in progress...", end="", flush=True)
+                    previous_status = None
                     while True:
                         time.sleep(1)
                         try:
                             scan_details = client.get_scan_by_id(org_id, group_id, scan_id)
                         except requests.RequestException as req_err:
+                            print(f"\r{Fore.RED}API request failed: {str(req_err)}{Style.RESET_ALL}")
                             logger.error(f"API request failed while fetching scan details: {str(req_err)}")
-                            print(f"{Fore.RED}API request failed: {str(req_err)}{Style.RESET_ALL}")
                             sys.exit(0)
                         except Exception as e:
+                            print(f"\r{Fore.RED}Unexpected error: {str(e)}{Style.RESET_ALL}")
                             logger.error(f"Unexpected error while fetching scan details: {str(e)}")
-                            print(f"{Fore.RED}Unexpected error: {str(e)}{Style.RESET_ALL}")
                             sys.exit(0)
 
                         status = scan_details.get('status', 'N/A')
+                        if previous_status != status:
+                            print(f"\rScan status: {status}. Waiting...", end="", flush=True)
+                            previous_status = status
+                        else:
+                            print(".", end="", flush=True)
+                            
                         if status == 'COMPLETED':
-                            print("Scan completed successfully.")
+                            print("\nScan completed successfully.")
                             break
                         elif status == 'FAILED':
-                            print("Scan failed.")
+                            print("\nScan failed.")
                             sys.exit(1)
-                        else:
-                            print(f"Scan status: {status}. Waiting...")
 
                     security_policy = scan_details.get('security_policy', {})
                     if not security_policy:
@@ -654,7 +660,10 @@ def main():
 
                     severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
                     results = scan_details.get('results', [])
+                    all_findings = []
+                    
                     for result in results:
+                        scanner_name = result.get('scanner', 'N/A')
                         findings = result.get('findings', [])
                         for finding in findings:
                             severity = finding.get('severity', 'UNKNOWN').upper()
@@ -662,8 +671,26 @@ def main():
                                 severity_counts[severity] += 1
                             else:
                                 severity_counts['UNKNOWN'] += 1
+                                
+                            all_findings.append([
+                                scanner_name,
+                                finding.get('path', 'N/A'),
+                                finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
+                                color_severity(severity)
+                            ])
 
                     total_findings = sum(severity_counts.values())
+                    
+                    if all_findings:
+                        print("\nFindings Summary:")
+                        findings_table = tabulate(
+                            all_findings,
+                            headers=["Scanner", "Path", "Vulnerability", "Severity"],
+                            tablefmt="rounded_grid"
+                        )
+                        print(findings_table)
+                    else:
+                        print(f"{Fore.GREEN}No vulnerabilities found.{Style.RESET_ALL}")
 
                     fail = False
                     fail_reasons = []
@@ -680,10 +707,10 @@ def main():
                             fail_reasons.append(f"{severity} findings ({count}) >= threshold ({threshold})")
 
                     if fail:
-                        print(f"{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
+                        print(f"\n{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
                         sys.exit(1)
                     else:
-                        print(f"Number of vulnerabilities found: {total_findings}")
+                        print(f"\nNumber of vulnerabilities found: {total_findings}")
                         if args.fail_on_vulns and total_findings > 0:
                             print("Vulnerabilities found. Failing the pipeline.")
                             sys.exit(1)
@@ -698,28 +725,9 @@ def main():
                         print("Failed to fetch or save SARIF results.")
 
                 try:
-                    executive_summary = client.get_executive_summary(org_id, scan_id)
-                    print("\n--------------")
-                    print("Executive Summary:")
-                    print("--------------")
-                    summary_text = executive_summary.get('response', 'No summary available.')
-                    formatted_summary = format_bold_texts(summary_text)
-                    print(formatted_summary)
-
-                except requests.RequestException as req_err:
-                    logger.error(f"Failed to fetch executive summary: {str(req_err)}")
-                    print(f"{Fore.RED}Failed to fetch executive summary: {str(req_err)}{Style.RESET_ALL}")
-                except Exception as e:
-                    logger.error(f"Unexpected error while fetching executive summary: {str(e)}")
-                    print(f"{Fore.RED}Unexpected error while fetching executive summary: {str(e)}{Style.RESET_ALL}")
-
-                try:
                     dashboard_link = f"https://aquilax.ai/app/scan/{org_id}/{scan_id}/{group_id}"
-                    pdf_link = f"{client.base_url}/organization/{org_id}/scan/{scan_id}/report"
                     print("\n--------------")
                     print(f"View the full scan results on the dashboard: {Fore.BLUE}{dashboard_link}{Style.RESET_ALL}")
-                    # print("--------------")
-                    # print(f"Download the PDF report from: {Fore.BLUE}{pdf_link}{Style.RESET_ALL}")
                     print("\n")
 
                 except Exception as e:
