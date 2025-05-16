@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aquilax"
+dynamic = ["version"]
+description = "AquilaX CLI Client"
+readme = "README.md"
+requires-python = ">=3.6"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Omer", email = "admin@aquilax.io"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "requests",
+    "python-dotenv",
+    "requests-toolbelt",
+    "tabulate",
+    "colorama",
+]
+
+[project.urls]
+Homepage = "https://github.com/AquilaX-AI/AquilaX-Client"
+
+[project.scripts]
+aquilax = "aquilax.__main__:main"
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+
+[tool.setuptools.packages.find]
+include = ["aquilax*"]
+
+[tool.setuptools.package-data]
+aquilax = ["VERSION"]
