@@ -99,10 +99,23 @@ def save_config(config):
 
 def get_version():
     try:
-        version = "1.3.0"
-        return version
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        version_file = os.path.join(current_dir, '..', 'VERSION')
+        
+        if not os.path.exists(version_file):
+            version_file = os.path.join(current_dir, 'VERSION')
+        
+        if os.path.exists(version_file):
+            with open(version_file, 'r') as f:
+                return f.read().strip()
+        else:
+            try:
+                from importlib.metadata import version
+                return version('aquilax')
+            except:
+                return "Unknown"
     except Exception as e:
-        logger.error(f"Failed to get the version")
+        logger.error(f"Failed to get the version: {e}")
         return "Unknown"
 
 def format_bold_text(text):

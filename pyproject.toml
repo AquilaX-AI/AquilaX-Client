@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,13 +8,12 @@ dynamic = ["version"]
 description = "AquilaX CLI Client"
 readme = "README.md"
 requires-python = ">=3.6"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 authors = [
     {name = "Omer", email = "admin@aquilax.io"},
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
