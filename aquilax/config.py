@@ -6,7 +6,7 @@ CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
 class ClientConfig:
     _config = {
         'apiToken': os.getenv('AQUILAX_AUTH', ''),
-        'baseUrl': 'https://aquilax.ai',
+        'baseUrl': os.getenv('AQUILAX_URL', 'https://aquilax.ai'),
         'baseApiPath': '/api',
     }
 
