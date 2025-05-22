@@ -202,7 +202,10 @@ def main():
     # Add the login command
     login_parser = subparsers.add_parser('login', help='Login to Aquilax by setting the API token')
     login_parser.add_argument('token', help='API Token for authentication')
-    login_parser.add_argument('--server', default='https://aquilax.ai', help='AquilaX Server in use (default: https://aquilax.ai)')
+    
+    default_server = os.getenv("AQUILAX_SERVER", "https://aquilax.ai")
+
+    login_parser.add_argument('--server', default=default_server, help='AquilaX Server in use (default: https://aquilax.ai)')
 
     logout_parser = subparsers.add_parser('logout', help='Logout and remove the API token')
 
