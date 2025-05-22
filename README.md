@@ -42,6 +42,10 @@ To run the client, use the following structure:```aquilax <command> [options]```
 ```bash
 aquilax login <token>
 ```
+> **Example Usage (on-prem):**
+```bash
+aquilax login <token> --server "https://aquilax.org.local"
+```
 
 ### Configuration
 > Set organization or group as default.
