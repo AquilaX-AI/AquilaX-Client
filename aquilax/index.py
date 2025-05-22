@@ -252,7 +252,7 @@ def main():
                     'Content-Type': 'application/json'
                 }
                 
-                sarif_response = requests.get(sarif_url, headers=headers)
+                sarif_response = requests.get(sarif_url, headers=headers, verify=False)
                 sarif_response.raise_for_status()
 
                 print(json.dumps(sarif_response.json(), indent=4))
@@ -811,7 +811,7 @@ def main():
                         'Content-Type': 'application/json'
                     }
 
-                    sarif_response = requests.get(sarif_url, headers=headers)
+                    sarif_response = requests.get(sarif_url, headers=headers, verify=False)
                     sarif_response.raise_for_status()
 
                     print(json.dumps(sarif_response.json(), indent=4))
