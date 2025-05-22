@@ -252,7 +252,11 @@ def main():
                     'Content-Type': 'application/json'
                 }
                 
-                sarif_response = requests.get(sarif_url, headers=headers, verify=False)
+                verify_host = False
+                if base_url.startswith("https://aquilax.ai"):
+                    verify_host = True
+
+                sarif_response = requests.get(sarif_url, headers=headers, verify=verify_host)
                 sarif_response.raise_for_status()
 
                 print(json.dumps(sarif_response.json(), indent=4))
@@ -811,7 +815,11 @@ def main():
                         'Content-Type': 'application/json'
                     }
 
-                    sarif_response = requests.get(sarif_url, headers=headers, verify=False)
+                    verify_host = False
+                    if base_url.startswith("https://aquilax.ai"):
+                        verify_host = True
+
+                    sarif_response = requests.get(sarif_url, headers=headers, verify=verify_host)
                     sarif_response.raise_for_status()
 
                     print(json.dumps(sarif_response.json(), indent=4))

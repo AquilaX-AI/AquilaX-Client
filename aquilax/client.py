@@ -37,6 +37,12 @@ class APIClient:
             'X-AX-Key': f"{self.api_token}",
         }
 
+        self.verify_host = False
+
+        if self.base_url.startswith("https://aquilax.ai"):
+            self.verify_host = True
+
+
     def suggest_token_setup(self):
             print("API Token is not set or is invalid.")
             print("Please run 'aquilax login <token>' to set your API token.")
@@ -51,7 +57,7 @@ class APIClient:
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
 
-        response = requests.post(f"{self.base_url}/v2/scan?org={org_id}&group={group_id}", headers=headers, json=data, verify=False)
+        response = requests.post(f"{self.base_url}/v2/scan?org={org_id}&group={group_id}", headers=headers, json=data, verify=self.verify_host)
         response.raise_for_status()
         return response.json()
 
@@ -65,25 +71,25 @@ class APIClient:
         headers = self.headers.copy()
         headers['Content-Type'] = m.content_type
         url = f"{self.base_url}/v1/organization/{org_id}/group/{group_id}/file-scan"
-        response = requests.post(url, headers=headers, data=m , verify=False)
+        response = requests.post(url, headers=headers, data=m , verify=self.verify_host)
         response.raise_for_status()
         return response.json()
 
     def get_scan_by_id(self, org_id, group_id, scan_id):
         headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/v2/scan/{scan_id}?org={org_id}&group={group_id}", headers=headers, verify=False)
+        response = requests.get(f"{self.base_url}/v2/scan/{scan_id}?org={org_id}&group={group_id}", headers=headers, verify=self.verify_host)
         response.raise_for_status()
         return response.json()
     
     def get_scan_results_sarif(self, org_id, scan_id):
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
-        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}?format=sarif", headers=headers, verify=False)
+        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}?format=sarif", headers=headers, verify=self.verify_host)
         response.raise_for_status()
         return response.json()
     
     def get_executive_summary(self, org_id, scan_id):
         headers = self.headers.copy()
-        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}/generate_executive_summary", headers=headers, verify=False)
+        response = requests.get(f"{self.base_url}/v1/organization/{org_id}/scan/{scan_id}/generate_executive_summary", headers=headers, verify=self.verify_host)
         response.raise_for_status()
         return response.json()
