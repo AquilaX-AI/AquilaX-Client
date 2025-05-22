@@ -205,6 +205,7 @@ def main():
     # Add the login command
     login_parser = subparsers.add_parser('login', help='Login to Aquilax by setting the API token')
     login_parser.add_argument('token', help='API Token for authentication')
+    login_parser.add_argument('--server', default='https://aquilax.ai', help='AquilaX Server in use (default: https://aquilax.ai)')
 
     logout_parser = subparsers.add_parser('logout', help='Logout and remove the API token')
 
@@ -212,20 +213,21 @@ def main():
 
     if args.command == 'login':
         config['apiToken'] = args.token
+        config['baseUrl'] = args.server
+
         save_config(config)
-        print(f"Authenticated successfully! \n")
+        print(f"Auth Configuration Saved successfully! \n")
         return
 
     if args.command == 'logout':
         config.pop('apiToken', None)
+        config.pop('baseUrl', None)
         save_config(config)
-        print("Logged out!. \n")
+        print("Auth Configuration Removed successfully!. \n")
         return
     
     if args.command == 'pull':
-        server = args.server or config.get('server')
-
-        client = APIClient(server)
+        client = APIClient()
 
         org_id = args.org_id or config.get('org_id')
 
@@ -317,9 +319,7 @@ def main():
         return
 
     try:
-        server = args.server or config.get('server')
-
-        client = APIClient(server)
+        client = APIClient()
 
         if args.command == 'scan':
             org_id = config.get('org_id')
@@ -478,9 +478,7 @@ def main():
             if scanners == ['all']:
                 scanners = ALL_SCANNERS
 
-            server = args.server or config.get('server')
-
-            client = APIClient(server)
+            client = APIClient()
             try:
                 response = client.start_file_scan(
                     org_id,
