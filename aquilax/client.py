@@ -19,9 +19,14 @@ def save_config(config):
         json.dump(config, f, indent=4)
 
 class APIClient:
-    def __init__(self):
+    def __init__(self, server):
         config = load_config()
-        self.base_url = f"{ClientConfig.get('baseUrl').rstrip('/')}{ClientConfig.get('baseApiPath')}"
+        if server:
+            self.base_url = f"{server.rstrip('/')}"
+        else:
+            self.base_url = f"{ClientConfig.get('baseUrl').rstrip('/')}{ClientConfig.get('baseApiPath')}"
+
+
         self.api_token = config.get('apiToken') or os.getenv('AQUILAX_AUTH')
         if not self.api_token:
             self.suggest_token_setup()

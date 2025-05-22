@@ -150,6 +150,7 @@ def main():
     ci_parser.add_argument('--group-id', help='Group ID')
     ci_parser.add_argument('--fail-on-vulns', action='store_true', help='Fail the pipeline if vulnerabilities are found')
     ci_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
+    ci_parser.add_argument('--server', default='https://aquilax.ai', help='Set the AquilaX Server for metrics (default: https://aquilax.ai)')
     ci_parser.add_argument('--sync', action='store_true', help='Enable sync mode to fetch scan results periodically') 
     ci_parser.add_argument('--output-dir', default='.', help='Directory to save the PDF report')
     ci_parser.add_argument('--save-pdf', action='store_true', help='Save the PDF report locally')
@@ -181,6 +182,8 @@ def main():
     scan_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
     scan_parser.add_argument('--sync', action='store_true', help="Enable sync mode to fetch scan results periodically")
     scan_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
+    scan_parser.add_argument('--server', default='https://aquilax.ai', help='Set the AquilaX Server for metrics (default: https://aquilax.ai)')
+
     ci_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
 
     get_parser = subparsers.add_parser('get', help='Get information')
@@ -220,7 +223,9 @@ def main():
         return
     
     if args.command == 'pull':
-        client = APIClient()
+        server = args.server or config.get('server')
+
+        client = APIClient(server)
 
         org_id = args.org_id or config.get('org_id')
 
@@ -264,6 +269,7 @@ def main():
                     ["Scan ID", args.scan_id],
                     ["Git URI", scan_info.get('git_uri')],
                     ["Branch", scan_info.get('branch')],
+                    ["Server", scan_info.get('server')],
                     ["Scanners", ", ".join([scanner for scanner, used in scan_info.get('scanners', {}).items() if used])]
                 ]
                 table = tabulate(table_data, headers=["Detail", "Value"], tablefmt="grid")
@@ -311,7 +317,9 @@ def main():
         return
 
     try:
-        client = APIClient()
+        server = args.server or config.get('server')
+
+        client = APIClient(server)
 
         if args.command == 'scan':
             org_id = config.get('org_id')
@@ -470,7 +478,9 @@ def main():
             if scanners == ['all']:
                 scanners = ALL_SCANNERS
 
-            client = APIClient()
+            server = args.server or config.get('server')
+
+            client = APIClient(server)
             try:
                 response = client.start_file_scan(
                     org_id,
@@ -494,6 +504,7 @@ def main():
         elif args.command == 'ci-scan':
             org_id = args.org_id or config.get('org_id')
             group_id = args.group_id or config.get('group_id')
+            
 
             if not org_id:
                 print("Organization ID is not set. Please provide it using --org-id or set a default using --set-org.")
@@ -505,6 +516,7 @@ def main():
 
             # Debugging
             print(f"Branch: {args.branch}")
+            print(f"Server: {server}")
 
             try:
                 scan_response = client.start_scan(
@@ -815,6 +827,7 @@ def main():
                     print("\n")
                     print(f"Git URI: {scan_info.get('git_uri')}")
                     print(f"Branch: {scan_info.get('branch')}")
+                    print(f"Server: {scan_info.get('server')}")
                     print(f"Scanners Used: {', '.join([scanner for scanner, used in scan_info.get('scanners', {}).items() if used])}")
                     print("\nResults:")
 
