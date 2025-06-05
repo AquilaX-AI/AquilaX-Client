@@ -11,8 +11,6 @@ import time
 import colorama
 from colorama import Fore, Style
 import re
-import tempfile
-import zipfile
 
 colorama.init(autoreset=True)
 CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
@@ -159,17 +157,6 @@ def main():
     pull_parser.add_argument('scan_id', help='Scan ID to pull')
     pull_parser.add_argument('--org-id', help='Organization ID (optional, if not provided, the default org ID will be used)')
     pull_parser.add_argument('--format', choices=['json', 'table', 'sarif'], default='table', help='Output format: json, sarif, or table')
-
-    # File-scan command
-    file_scan_parser = subparsers.add_parser('file-scan', help='Upload and scan a zip file or a directory')
-    file_scan_parser.add_argument('file', help='Path to the zip file or directory to scan')
-    file_scan_parser.add_argument('--org-id', help='Organization ID (if not provided, default from config is used)')
-    file_scan_parser.add_argument('--group-id', help='Group ID (if not provided, default from config is used)')
-    file_scan_parser.add_argument('--scanners', nargs='+', default=['pii_scanner', 'secret_scanner'], 
-                                  help='Scanners to use (e.g., pii_scanner secret_scanner)')
-    file_scan_parser.add_argument('--tags', nargs='+', default=['aquilax', 'file-scan'], 
-                                  help='Tags for the scan')
-
 
     # Scan command
     scan_parser = subparsers.add_parser('scan', help='Start a scan with Git URI')
@@ -448,64 +435,9 @@ def main():
                 print("Unable to start the scan.")
                 sys.exit(0)
 
-
-        elif args.command == 'file-scan':
-            org_id = args.org_id or config.get('org_id')
-            group_id = args.group_id or config.get('group_id')
-            if not org_id:
-                print("Organization ID is required. Please provide it with --org-id or set a default using --set-org.")
-                return
-            if not group_id:
-                print("Group ID is required. Please provide it with --group-id or set a default using --set-group.")
-                return
-
-            zip_file_path = args.file
-            if os.path.isdir(args.file):
-                if args.file in [".", "./"]:
-                    folder_path = os.getcwd()
-                    folder_name = os.path.basename(folder_path)
-                else:
-                    folder_name = os.path.basename(os.path.normpath(args.file))
-                    
-                zip_file_path = os.path.join(tempfile.gettempdir(), f"{folder_name}.zip")
-                print(f"Directory: {args.file}. Creating a ZIP archive named {folder_name}.zip for scanning.")
-                with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    for root, dirs, files in os.walk(args.file):
-                        for file in files:
-                            file_path = os.path.join(root, file)
-                            arcname = os.path.relpath(file_path, args.file)
-                            zipf.write(file_path, arcname)
-                print(f"Created ZIP archive at {zip_file_path} - Starting Scan...")
-
-            scanners = args.scanners
-            if scanners == ['all']:
-                scanners = ALL_SCANNERS
-
-            client = APIClient()
-            try:
-                response = client.start_file_scan(
-                    org_id,
-                    group_id,
-                    zip_file_path,
-                    {scanner: True for scanner in scanners},
-                    args.tags
-                )
-                file_scan_id = response.get('scan_id')
-                if file_scan_id:
-                    print(f"File scan started successfully with Scan ID: {file_scan_id}")
-                else:
-                    print("File-scan request completed, but no Scan ID was returned.")
-            except Exception as e:
-                print(f"Error starting file scan: {str(e)}")
-            finally:
-                if os.path.isdir(args.file) and os.path.exists(zip_file_path):
-                    os.remove(zip_file_path)
-
-
         elif args.command == 'ci-scan':
             org_id = args.org_id or config.get('org_id')
             group_id = args.group_id or config.get('group_id')
-            
 
             if not org_id:
                 print("Organization ID is not set. Please provide it using --org-id or set a default using --set-org.")
