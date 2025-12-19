@@ -33,7 +33,7 @@ Scan your code for various security vulnerabilities with specialized scanners:
 - 🛡️ **SAST Scanner** - Analyze source code for security vulnerabilities
 - 📦 **SCA Scanner** - Find known vulnerabilities in your dependencies and libraries
 - 🐳 **Container Scanner** - Scan Docker images and containers for security issues
-- 🖼️ **Image Scanner** - Analyze images embedded in your repository
+- 🖼️ **Image Scanner** - Analyze docker images in your repository
 - ⚙️ **CI/CD Scanner** - Review pipeline configurations for security best practices
 
 ### 🚀 Easy CI/CD Integration

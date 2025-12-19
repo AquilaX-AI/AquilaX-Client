@@ -594,6 +594,19 @@ def main():
                                 print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
 
                             print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, args.fail_on_vulns, status)
+                            
+                            # Save SARIF results for CI/CD artifact upload
+                            try:
+                                print("\nGenerating SARIF report...")
+                                sarif_data = client.get_scan_results_sarif(org_id, group_id, scan_id)
+                                sarif_file_path = os.path.join(os.getcwd(), 'results.sarif')
+                                with open(sarif_file_path, 'w') as sarif_file:
+                                    json.dump(sarif_data, sarif_file, indent=2)
+                                print(f"{Fore.GREEN}SARIF report saved to: {sarif_file_path}{Style.RESET_ALL}")
+                            except Exception as e:
+                                logger.error(f"Failed to generate SARIF report: {str(e)}")
+                                print(f"{Fore.YELLOW}Warning: Failed to generate SARIF report: {str(e)}{Style.RESET_ALL}")
+                            
                             break
 
                 else:
@@ -650,6 +663,18 @@ def main():
                         print(f"{Fore.GREEN}No vulnerabilities found.{Style.RESET_ALL}")
 
                     print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, args.fail_on_vulns, status)
+
+                # Save SARIF results for CI/CD artifact upload
+                try:
+                    print("\nGenerating SARIF report...")
+                    sarif_data = client.get_scan_results_sarif(org_id, group_id, scan_id)
+                    sarif_file_path = os.path.join(os.getcwd(), 'results.sarif')
+                    with open(sarif_file_path, 'w') as sarif_file:
+                        json.dump(sarif_data, sarif_file, indent=2)
+                    print(f"{Fore.GREEN}SARIF report saved to: {sarif_file_path}{Style.RESET_ALL}")
+                except Exception as e:
+                    logger.error(f"Failed to generate SARIF report: {str(e)}")
+                    print(f"{Fore.YELLOW}Warning: Failed to generate SARIF report: {str(e)}{Style.RESET_ALL}")
 
                 try:
                     dashboard_link = f"https://aquilax.ai/app/scan/{org_id}/{scan_id}/{group_id}"
