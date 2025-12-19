@@ -126,6 +126,105 @@ def format_bold_text(text):
     formatted_text = re.sub(pattern, replacer, text)
     return formatted_text
 
+def convert_to_sarif(scan_details, scan_id):
+    """Convert scan results to SARIF 2.1.0 format."""
+    sarif_results = []
+    sarif_rules = []
+    rule_ids_seen = set()
+    
+    # Extract findings from scan details
+    if 'findings' in scan_details:
+        findings_list = scan_details['findings']
+    else:
+        results = scan_details.get('results', [])
+        findings_list = []
+        for result in results:
+            findings_list.extend(result.get('findings', []))
+    
+    # Convert each finding to SARIF format
+    for finding in findings_list:
+        vuln_name = finding.get('vuln', 'Unknown Vulnerability')
+        scanner = finding.get('scanner', 'unknown')
+        severity = finding.get('severity', 'UNKNOWN').upper()
+        path = finding.get('path', '')
+        line_start = finding.get('line_start', 1)
+        line_end = finding.get('line_end', line_start)
+        description = finding.get('description', '')
+        cwe_list = finding.get('cwe', [])
+        owasp_list = finding.get('owasp', [])
+        
+        # Map severity to SARIF level
+        level_map = {
+            'CRITICAL': 'error',
+            'HIGH': 'error',
+            'MEDIUM': 'warning',
+            'LOW': 'note',
+            'UNKNOWN': 'none'
+        }
+        level = level_map.get(severity, 'warning')
+        
+        # Create rule ID
+        rule_id = f"{scanner}_{vuln_name.replace(' ', '_').replace('/', '_')}"[:100]
+        
+        # Add rule if not seen before
+        if rule_id not in rule_ids_seen:
+            rule_ids_seen.add(rule_id)
+            rule = {
+                "id": rule_id,
+                "name": vuln_name,
+                "shortDescription": {"text": vuln_name},
+                "fullDescription": {"text": description or vuln_name},
+                "help": {
+                    "text": f"Scanner: {scanner}\nCWE: {', '.join(cwe_list) if cwe_list else 'N/A'}\nOWASP: {', '.join(owasp_list) if owasp_list else 'N/A'}"
+                },
+                "defaultConfiguration": {"level": level},
+                "properties": {
+                    "security-severity": str({'CRITICAL': '9.5', 'HIGH': '7.5', 'MEDIUM': '5.5', 'LOW': '3.5', 'UNKNOWN': '0'}.get(severity, '0')),
+                    "tags": [scanner, severity.lower()] + cwe_list + owasp_list
+                }
+            }
+            sarif_rules.append(rule)
+        
+        # Create SARIF result
+        sarif_result = {
+            "ruleId": rule_id,
+            "level": level,
+            "message": {"text": description or vuln_name},
+            "locations": [{
+                "physicalLocation": {
+                    "artifactLocation": {"uri": path},
+                    "region": {
+                        "startLine": line_start,
+                        "endLine": line_end
+                    }
+                }
+            }]
+        }
+        sarif_results.append(sarif_result)
+    
+    # Build complete SARIF document
+    sarif_document = {
+        "version": "2.1.0",
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "runs": [{
+            "tool": {
+                "driver": {
+                    "name": "Aquilax",
+                    "version": "1.0.0",
+                    "informationUri": "https://aquilax.ai",
+                    "rules": sarif_rules
+                }
+            },
+            "results": sarif_results,
+            "properties": {
+                "scanId": scan_id
+            }
+        }]
+    }
+    
+    return sarif_document
+
+
 def parse_and_display_findings(scan_details, org_id, group_id):
     """Common function to parse findings and display table post-scan."""
     all_findings = []
@@ -598,11 +697,24 @@ def main():
                             # Save SARIF results for CI/CD artifact upload
                             try:
                                 print("\nGenerating SARIF report...")
+                                # Add a small delay to ensure backend has processed SARIF data
+                                time.sleep(2)
                                 sarif_data = client.get_scan_results_sarif(org_id, group_id, scan_id)
+                                
+                                # Check if SARIF has results
+                                sarif_results_count = len(sarif_data.get('runs', [{}])[0].get('results', []))
+                                
+                                # If backend returns empty SARIF but we have findings, convert client-side
+                                if sarif_results_count == 0 and total_findings > 0:
+                                    logger.warning(f"Backend SARIF returned empty results despite {total_findings} findings. Using client-side conversion.")
+                                    print(f"{Fore.YELLOW}Backend SARIF empty - using client-side conversion...{Style.RESET_ALL}")
+                                    sarif_data = convert_to_sarif(scan_details, scan_id)
+                                    sarif_results_count = len(sarif_data.get('runs', [{}])[0].get('results', []))
+                                
                                 sarif_file_path = os.path.join(os.getcwd(), 'results.sarif')
                                 with open(sarif_file_path, 'w') as sarif_file:
                                     json.dump(sarif_data, sarif_file, indent=2)
-                                print(f"{Fore.GREEN}SARIF report saved to: {sarif_file_path}{Style.RESET_ALL}")
+                                print(f"{Fore.GREEN}SARIF report saved to: {sarif_file_path} ({sarif_results_count} results){Style.RESET_ALL}")
                             except Exception as e:
                                 logger.error(f"Failed to generate SARIF report: {str(e)}")
                                 print(f"{Fore.YELLOW}Warning: Failed to generate SARIF report: {str(e)}{Style.RESET_ALL}")
@@ -667,11 +779,24 @@ def main():
                 # Save SARIF results for CI/CD artifact upload
                 try:
                     print("\nGenerating SARIF report...")
+                    # Add a small delay to ensure backend has processed SARIF data
+                    time.sleep(2)
                     sarif_data = client.get_scan_results_sarif(org_id, group_id, scan_id)
+                    
+                    # Check if SARIF has results
+                    sarif_results_count = len(sarif_data.get('runs', [{}])[0].get('results', []))
+                    
+                    # If backend returns empty SARIF but we have findings, convert client-side
+                    if sarif_results_count == 0 and total_findings > 0:
+                        logger.warning(f"Backend SARIF returned empty results despite {total_findings} findings. Using client-side conversion.")
+                        print(f"{Fore.YELLOW}Backend SARIF empty - using client-side conversion...{Style.RESET_ALL}")
+                        sarif_data = convert_to_sarif(scan_details, scan_id)
+                        sarif_results_count = len(sarif_data.get('runs', [{}])[0].get('results', []))
+                    
                     sarif_file_path = os.path.join(os.getcwd(), 'results.sarif')
                     with open(sarif_file_path, 'w') as sarif_file:
                         json.dump(sarif_data, sarif_file, indent=2)
-                    print(f"{Fore.GREEN}SARIF report saved to: {sarif_file_path}{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN}SARIF report saved to: {sarif_file_path} ({sarif_results_count} results){Style.RESET_ALL}")
                 except Exception as e:
                     logger.error(f"Failed to generate SARIF report: {str(e)}")
                     print(f"{Fore.YELLOW}Warning: Failed to generate SARIF report: {str(e)}{Style.RESET_ALL}")
