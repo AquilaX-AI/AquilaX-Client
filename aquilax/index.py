@@ -126,6 +126,97 @@ def format_bold_text(text):
     formatted_text = re.sub(pattern, replacer, text)
     return formatted_text
 
+def parse_and_display_findings(scan_details, org_id, group_id):
+    """Common function to parse findings and display table post-scan."""
+    all_findings = []
+    severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
+
+    # Check for new format: findings directly in scan_details
+    if 'findings' in scan_details:
+        findings_list = scan_details['findings']
+        for finding in findings_list:
+            scanner_name = finding.get('scanner', 'N/A')
+            severity = finding.get('severity', 'UNKNOWN').upper()
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+            vuln_name = finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A')
+            cwe = ', '.join(finding.get('cwe', [])) if isinstance(finding.get('cwe'), list) else str(finding.get('cwe', 'N/A'))
+            owasp = ', '.join(finding.get('owasp', [])) if isinstance(finding.get('owasp'), list) else str(finding.get('owasp', 'N/A'))
+            all_findings.append([
+                scanner_name,
+                finding.get('path', 'N/A'),
+                vuln_name,
+                color_severity(severity),
+                cwe,
+                owasp
+            ])
+    else:
+        # Old format: results with findings
+        results = scan_details.get('results', [])
+        for result in results:
+            scanner_name = result.get('scanner', 'N/A')
+            findings = result.get('findings', [])
+            for finding in findings:
+                severity = finding.get('severity', 'UNKNOWN').upper()
+                if severity in severity_counts:
+                    severity_counts[severity] += 1
+                vuln_name = finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A')
+                cwe = finding.get('cwe', 'N/A')
+                owasp = finding.get('owasp', 'N/A')
+                all_findings.append([
+                    scanner_name,
+                    finding.get('path', 'N/A'),
+                    vuln_name,
+                    color_severity(severity),
+                    cwe,
+                    owasp
+                ])
+
+    total_findings = sum(severity_counts.values())
+    return all_findings, severity_counts, total_findings
+
+def print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, fail_on_vulns=False, status='COMPLETED'):
+    """Print thresholds and perform fail check."""
+    # Default thresholds
+    default_thresholds = {'total': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
+    thresholds = default_thresholds.copy()
+    try:
+        policy = client.get_group_policy(org_id, group_id)
+        thresholds.update(policy)
+    except Exception as e:
+        logger.warning(f"Failed to fetch group policy thresholds: {e}. Using defaults.")
+
+    print("\n**Security Policy Thresholds:**")
+    for sev, thresh in thresholds.items():
+        print(f"  - {sev}: {thresh}")
+
+    fail = False
+    fail_reasons = []
+    if total_findings > thresholds['total']:
+        fail = True
+        fail_reasons.append(f"Total ({total_findings}) > {thresholds['total']}")
+    for severity in severity_counts:
+        if severity == 'UNKNOWN':
+            continue
+        count = severity_counts[severity]
+        if count > thresholds.get(severity, 0):
+            fail = True
+            fail_reasons.append(f"{severity} ({count}) > {thresholds[severity]}")
+
+    if fail:
+        print(f"{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
+        sys.exit(1)
+    else:
+        print(f"\nScan Status: {status}")
+        if total_findings > 0:
+            print(f"{Fore.YELLOW}Number of vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
+        else:
+            print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
+
+    if fail_on_vulns and total_findings > 0:
+        print("Vulnerabilities found. Failing the pipeline.")
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="Aquilax API Client")
 
@@ -151,12 +242,14 @@ def main():
     ci_parser.add_argument('--sync', action='store_true', help='Enable sync mode to fetch scan results periodically') 
     ci_parser.add_argument('--output-dir', default='.', help='Directory to save the PDF report')
     ci_parser.add_argument('--save-pdf', action='store_true', help='Save the PDF report locally')
+    ci_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
 
     # Pull command
     pull_parser = subparsers.add_parser('pull', help='Fetch scan by scan_id')
     pull_parser.add_argument('scan_id', help='Scan ID to pull')
     pull_parser.add_argument('--org-id', help='Organization ID (optional, if not provided, the default org ID will be used)')
-    pull_parser.add_argument('--format', choices=['json', 'table', 'sarif'], default='table', help='Output format: json, sarif, or table')
+    pull_parser.add_argument('--group-id', help='Group ID (optional, if not provided, the default group ID will be used)')
+    pull_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
 
     # Scan command
     scan_parser = subparsers.add_parser('scan', help='Start a scan with Git URI')
@@ -168,7 +261,6 @@ def main():
     scan_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
     scan_parser.add_argument('--sync', action='store_true', help="Enable sync mode to fetch scan results periodically")
     scan_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
-    ci_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
 
     get_parser = subparsers.add_parser('get', help='Get information')
     get_subparsers = get_parser.add_subparsers(dest='get_command')
@@ -178,9 +270,8 @@ def main():
     get_scan_details_parser = get_subparsers.add_parser('scan-details', help='Get scan details')
     get_scan_details_parser.add_argument('--org-id', help='Organization ID')
     get_scan_details_parser.add_argument('--group-id', help='Group ID')
-    get_scan_details_parser.add_argument('--project-id', required=True, help='Project ID')
     get_scan_details_parser.add_argument('--scan-id', required=True, help='Scan ID')
-    get_scan_details_parser.add_argument('--format', choices=['json', 'sarif', 'table'], default='table', help='Output format: json, sarif, or table')
+    get_scan_details_parser.add_argument('--format', choices=['json', 'table'], default='table', help='Output format: json or table')
 
     # Get All Organizations command
     get_groups_parser = get_subparsers.add_parser('groups', help='Get all groups for an organization')
@@ -217,13 +308,17 @@ def main():
         client = APIClient()
 
         org_id = args.org_id or config.get('org_id')
+        group_id = args.group_id or config.get('group_id')
 
         if not org_id:
             print(f"Organization ID is required but not provided and no default is set.")
             return
+        if not group_id:
+            print(f"Group ID is required but not provided and no default is set.")
+            return
 
         try:
-            scan_details = client.get_scan_by_id(org_id, args.scan_id)
+            scan_details = client.get_scan_by_id(org_id, group_id, args.scan_id)
 
             if not scan_details or "scan" not in scan_details:
                 print("No scan details found.")
@@ -231,27 +326,7 @@ def main():
 
             output_format = getattr(args, 'format', 'table')
 
-            if output_format == 'sarif':
-                base_url = ClientConfig.get('baseUrl').rstrip('/')
-                base_api_path = ClientConfig.get('baseApiPath').rstrip('/')
-                
-                sarif_url = f"{base_url}{base_api_path}/organization/{org_id}/scan/{args.scan_id}?format=sarif"
-                
-                headers = {
-                    'X-AX-Key': client.api_token,
-                    'Content-Type': 'application/json'
-                }
-                
-                verify_host = False
-                if base_url.startswith("https://aquilax.ai"):
-                    verify_host = True
-
-                sarif_response = requests.get(sarif_url, headers=headers, verify=verify_host)
-                sarif_response.raise_for_status()
-
-                print(json.dumps(sarif_response.json(), indent=4))
-
-            elif output_format == 'json':
+            if output_format == 'json':
                 print(json.dumps(scan_details, indent=4))
 
             else:
@@ -267,24 +342,18 @@ def main():
                 table = tabulate(table_data, headers=["Detail", "Value"], tablefmt="grid")
                 print(table)
 
-                if results:
-                    all_findings = []
-                    for result in results:
-                        scanner_name = result.get('scanner', 'N/A')
-                        findings = result.get('findings', [])
-                        for finding in findings:
-                            all_findings.append([
-                                scanner_name,
-                                finding.get('path', 'N/A'),
-                                finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
-                                finding.get('severity', 'N/A')
-                            ])
+                all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
+                if all_findings:
+                    print("\nFindings Summary:")
                     findings_table = tabulate(
                         all_findings,
-                        headers=["Scanner", "Path", "Vulnerability", "Severity"],
+                        headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
                         tablefmt="rounded_grid"
                     )
-                    print(f"\nFindings:\n{findings_table}")
+                    print(findings_table)
+                    print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.GREEN}No findings across all scanners.{Style.RESET_ALL}")
 
         except requests.HTTPError as http_err:
             logger.error(f"HTTP error occurred: {http_err}")
@@ -359,23 +428,26 @@ def main():
 
                         status = scan_details.get('status', 'N/A')
 
-                        results = scan_details.get('results', [])
+                        if 'findings' in scan_details:
+                            findings_list = scan_details['findings']
+                        else:
+                            results = scan_details.get('results', [])
+                            findings_list = []
+                            for result in results:
+                                findings_list.extend(result.get('findings', []))
                         new_findings = []
 
-                        for result in results:
-                            scanner_name = result.get('scanner', 'N/A')
-                            findings_list = result.get('findings', [])
-
-                            for finding in findings_list:
-                                finding_entry = (
-                                    scanner_name,
-                                    finding.get('path', 'N/A'),
-                                    finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
-                                    finding.get('severity', 'N/A').upper()
-                                )
-                                if finding_entry not in current_findings:
-                                    current_findings.add(finding_entry)
-                                    new_findings.append(finding_entry)
+                        for finding in findings_list:
+                            scanner_name = finding.get('scanner', 'N/A')
+                            finding_entry = (
+                                scanner_name,
+                                finding.get('path', 'N/A'),
+                                finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
+                                finding.get('severity', 'N/A').upper()
+                            )
+                            if finding_entry not in current_findings:
+                                current_findings.add(finding_entry)
+                                new_findings.append(finding_entry)
 
                         if args.format == 'json':
                             print(json.dumps(list(current_findings), indent=4))
@@ -385,50 +457,29 @@ def main():
                         loading_index += 1
 
                         if status in ['COMPLETED', 'FAILED']:
-                            security_policy = scan_details.get('security_policy', {})
-                            if not security_policy:
-                                print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
-                            thresholds = security_policy.get('threshold', {})
-                            total_threshold = thresholds.get('total', sys.maxsize)
-                            high_threshold = thresholds.get('HIGH', sys.maxsize)
-                            medium_threshold = thresholds.get('MEDIUM', sys.maxsize)
-                            low_threshold = thresholds.get('LOW', sys.maxsize)
+                            # Re-fetch for final fresh data
+                            try:
+                                scan_details = client.get_scan_by_id(org_id, group_id, scan_id)
+                            except Exception as e:
+                                logger.error(f"Final fetch failed: {str(e)}")
+                                print(f"{Fore.RED}Warning: Could not fetch final details.{Style.RESET_ALL}")
+                                return
 
-                            severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
-                            for _, _, _, severity in current_findings:
-                                if severity in severity_counts:
-                                    severity_counts[severity] += 1
-                                else:
-                                    severity_counts['UNKNOWN'] += 1
+                            all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
-                            total_findings = sum(severity_counts.values())
-
-                            fail = False
-                            fail_reasons = []
-
-                            if total_findings >= total_threshold:
-                                fail = True
-                                fail_reasons.append(f"Total findings ({total_findings}) >= threshold ({total_threshold})")
-
-                            for severity in ['HIGH', 'MEDIUM', 'LOW', 'CRITICAL', 'UNKNOWN']:
-                                count = severity_counts.get(severity, 0)
-                                threshold = thresholds.get(severity, sys.maxsize)
-                                if count >= threshold:
-                                    fail = True
-                                    fail_reasons.append(f"{severity} findings ({count}) >= threshold ({threshold})")
-
-                            if fail:
-                                print(f"\nScan Status: {status}")
-                                print(f"{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
-                                sys.exit(1)
+                            if all_findings:
+                                print("\nFindings Summary:")
+                                findings_table = tabulate(
+                                    all_findings,
+                                    headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
+                                    tablefmt="rounded_grid"
+                                )
+                                print(findings_table)
+                                print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
                             else:
-                                if current_findings:
-                                    print(f"\nScan Status: {status}")
-                                    print(f"{Fore.YELLOW}Number of vulnerabilities found: {len(current_findings)}{Style.RESET_ALL}")
-                                else:
-                                    print(f"\nScan Status: {status}")
-                                    print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
+                                print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
 
+                            print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, status=status)
                             break
 
             else:
@@ -491,23 +542,26 @@ def main():
                             sys.exit(0)
 
                         status = scan_details.get('status', 'N/A')
-                        results = scan_details.get('results', [])
+                        if 'findings' in scan_details:
+                            findings_list = scan_details['findings']
+                        else:
+                            results = scan_details.get('results', [])
+                            findings_list = []
+                            for result in results:
+                                findings_list.extend(result.get('findings', []))
                         new_findings = []
 
-                        for result in results:
-                            scanner_name = result.get('scanner', 'N/A')
-                            findings_list = result.get('findings', [])
-
-                            for finding in findings_list:
-                                finding_entry = (
-                                    scanner_name,
-                                    finding.get('path', 'N/A'),
-                                    finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
-                                    finding.get('severity', 'N/A').upper()
-                                )
-                                if finding_entry not in current_findings:
-                                    current_findings.add(finding_entry)
-                                    new_findings.append(finding_entry)
+                        for finding in findings_list:
+                            scanner_name = finding.get('scanner', 'N/A')
+                            finding_entry = (
+                                scanner_name,
+                                finding.get('path', 'N/A'),
+                                finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
+                                finding.get('severity', 'N/A').upper()
+                            )
+                            if finding_entry not in current_findings:
+                                current_findings.add(finding_entry)
+                                new_findings.append(finding_entry)
 
                         if args.format == 'json':
                             print(json.dumps(list(current_findings), indent=4))
@@ -517,56 +571,29 @@ def main():
                         loading_index += 1
 
                         if status in ['COMPLETED', 'FAILED']:
-                            security_policy = scan_details.get('security_policy', {})
-                            if not security_policy:
-                                print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
-                            thresholds = security_policy.get('threshold', {})
-                            total_threshold = thresholds.get('total', sys.maxsize)
-                            high_threshold = thresholds.get('HIGH', sys.maxsize)
-                            medium_threshold = thresholds.get('MEDIUM', sys.maxsize)
-                            low_threshold = thresholds.get('LOW', sys.maxsize)
+                            # Re-fetch for final fresh data
+                            try:
+                                scan_details = client.get_scan_by_id(org_id, group_id, scan_id)
+                            except Exception as e:
+                                logger.error(f"Final fetch failed: {str(e)}")
+                                print(f"{Fore.RED}Warning: Could not fetch final details.{Style.RESET_ALL}")
+                                return
 
-                            print("\n**Security Policy Thresholds:**")
-                            print(f"  - Total: {total_threshold}")
-                            print(f"  - HIGH: {high_threshold}")
-                            print(f"  - MEDIUM: {medium_threshold}")
-                            print(f"  - LOW: {low_threshold}\n")
+                            all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
-                            severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
-                            for _, _, _, severity in current_findings:
-                                if severity in severity_counts:
-                                    severity_counts[severity] += 1
-                                else:
-                                    severity_counts['UNKNOWN'] += 1
-
-                            total_findings = sum(severity_counts.values())
-
-                            fail = False
-                            fail_reasons = []
-
-                            if total_findings >= total_threshold:
-                                fail = True
-                                fail_reasons.append(f"Total findings ({total_findings}) >= threshold ({total_threshold})")
-
-                            for severity in ['HIGH', 'MEDIUM', 'LOW', 'CRITICAL', 'UNKNOWN']:
-                                count = severity_counts.get(severity, 0)
-                                threshold = thresholds.get(severity, sys.maxsize)
-                                if count >= threshold:
-                                    fail = True
-                                    fail_reasons.append(f"{severity} findings ({count}) >= threshold ({threshold})")
-
-                            if fail:
-                                print(f"{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
-                                sys.exit(1)
+                            if all_findings:
+                                print("\nFindings Summary:")
+                                findings_table = tabulate(
+                                    all_findings,
+                                    headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
+                                    tablefmt="rounded_grid"
+                                )
+                                print(findings_table)
+                                print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
                             else:
-                                if current_findings:
-                                    print(f"{Fore.YELLOW}Number of vulnerabilities found: {len(current_findings)}{Style.RESET_ALL}")
-                                else:
-                                    print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
+                                print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
 
-                                if args.fail_on_vulns:
-                                    print("Vulnerabilities found. Failing the pipeline.")
-                                    sys.exit(1)
+                            print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, args.fail_on_vulns, status)
                             break
 
                 else:
@@ -600,86 +627,29 @@ def main():
                             print("\nScan failed.")
                             sys.exit(1)
 
-                    security_policy = scan_details.get('security_policy', {})
-                    if not security_policy:
-                        print(f"{Fore.YELLOW}Warning: security_policy not found in scan details. Using default thresholds.{Style.RESET_ALL}")
-                    thresholds = security_policy.get('threshold', {})
-                    total_threshold = thresholds.get('total', sys.maxsize)
-                    high_threshold = thresholds.get('HIGH', sys.maxsize)
-                    medium_threshold = thresholds.get('MEDIUM', sys.maxsize)
-                    low_threshold = thresholds.get('LOW', sys.maxsize)
+                    # Re-fetch for final fresh data
+                    try:
+                        scan_details = client.get_scan_by_id(org_id, group_id, scan_id)
+                    except Exception as e:
+                        logger.error(f"Final fetch failed: {str(e)}")
+                        print(f"{Fore.RED}Warning: Could not fetch final details.{Style.RESET_ALL}")
+                        return
 
-                    print("\n**Security Policy Thresholds:**")
-                    print(f"  - Total: {total_threshold}")
-                    print(f"  - HIGH: {high_threshold}")
-                    print(f"  - MEDIUM: {medium_threshold}")
-                    print(f"  - LOW: {low_threshold}\n")
+                    all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
-                    severity_counts = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'CRITICAL': 0, 'UNKNOWN': 0}
-                    results = scan_details.get('results', [])
-                    all_findings = []
-                    
-                    for result in results:
-                        scanner_name = result.get('scanner', 'N/A')
-                        findings = result.get('findings', [])
-                        for finding in findings:
-                            severity = finding.get('severity', 'UNKNOWN').upper()
-                            if severity in severity_counts:
-                                severity_counts[severity] += 1
-                            else:
-                                severity_counts['UNKNOWN'] += 1
-                                
-                            all_findings.append([
-                                scanner_name,
-                                finding.get('path', 'N/A'),
-                                finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
-                                color_severity(severity)
-                            ])
-
-                    total_findings = sum(severity_counts.values())
-                    
                     if all_findings:
                         print("\nFindings Summary:")
                         findings_table = tabulate(
                             all_findings,
-                            headers=["Scanner", "Path", "Vulnerability", "Severity"],
+                            headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
                             tablefmt="rounded_grid"
                         )
                         print(findings_table)
+                        print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
                     else:
                         print(f"{Fore.GREEN}No vulnerabilities found.{Style.RESET_ALL}")
 
-                    fail = False
-                    fail_reasons = []
-
-                    if total_findings >= total_threshold:
-                        fail = True
-                        fail_reasons.append(f"Total findings ({total_findings}) >= threshold ({total_threshold})")
-
-                    for severity in ['HIGH', 'MEDIUM', 'LOW', 'CRITICAL', 'UNKNOWN']:
-                        count = severity_counts.get(severity, 0)
-                        threshold = thresholds.get(severity, sys.maxsize)
-                        if count >= threshold:
-                            fail = True
-                            fail_reasons.append(f"{severity} findings ({count}) >= threshold ({threshold})")
-
-                    if fail:
-                        print(f"\n{Fore.RED}Thresholds exceeded: {'; '.join(fail_reasons)}{Style.RESET_ALL}")
-                        sys.exit(1)
-                    else:
-                        print(f"\nNumber of vulnerabilities found: {total_findings}")
-                        if args.fail_on_vulns and total_findings > 0:
-                            print("Vulnerabilities found. Failing the pipeline.")
-                            sys.exit(1)
-
-                    try:
-                        sarif_results = client.get_scan_results_sarif(org_id, scan_id)
-                        with open('results.sarif', 'w') as sarif_file:
-                            json.dump(sarif_results, sarif_file, indent=4)
-                        print("SARIF results saved to 'results.sarif'.")
-                    except Exception as e:
-                        logger.error(f"Failed to fetch or save SARIF results: {str(e)}")
-                        print("Failed to fetch or save SARIF results.")
+                    print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, args.fail_on_vulns, status)
 
                 try:
                     dashboard_link = f"https://aquilax.ai/app/scan/{org_id}/{scan_id}/{group_id}"
@@ -726,7 +696,7 @@ def main():
                     return
 
                 # Get Scan Details
-                scan_details = client.get_scan_by_id(org_id, group_id, args.project_id, args.scan_id)
+                scan_details = client.get_scan_by_id(org_id, group_id, args.scan_id)
 
                 if not scan_details or "scan" not in scan_details:
                     print("No scan details found.")
@@ -739,26 +709,6 @@ def main():
                 if output_format == "json":
                     print(json.dumps(scan_details, indent=4))
 
-                elif output_format == "sarif":
-                    base_url = ClientConfig.get('baseUrl').rstrip('/')
-                    base_api_path = ClientConfig.get('baseApiPath').rstrip('/')
-
-                    sarif_url = f"{base_url}{base_api_path}/organization/{org_id}/group/{group_id}/project/{args.project_id}/scan/{args.scan_id}?format=sarif"
-
-                    headers = {
-                        'X-AX-Key': client.api_token,
-                        'Content-Type': 'application/json'
-                    }
-
-                    verify_host = False
-                    if base_url.startswith("https://aquilax.ai"):
-                        verify_host = True
-
-                    sarif_response = requests.get(sarif_url, headers=headers, verify=verify_host)
-                    sarif_response.raise_for_status()
-
-                    print(json.dumps(sarif_response.json(), indent=4))
-
                 else:
                     print("\n")
                     print(f"Git URI: {scan_info.get('git_uri')}")
@@ -770,17 +720,7 @@ def main():
                         print("No findings for this scan.")
                         return
 
-                    all_findings = []
-                    for result in results:
-                        scanner_name = result.get('scanner', 'N/A')
-                        findings = result.get('findings', [])
-                        for finding in findings:
-                            all_findings.append([
-                                scanner_name,
-                                finding.get('path', 'N/A'),
-                                finding.get('vuln', 'N/A')[:47] + "..." if len(finding.get('vuln', 'N/A')) > 50 else finding.get('vuln', 'N/A'),
-                                finding.get('severity', 'N/A')
-                            ])
+                    all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
                     if not all_findings:
                         print("No findings across all scanners.")
@@ -788,10 +728,11 @@ def main():
 
                     table = tabulate(
                         all_findings,
-                        headers=["Scanner", "Path", "Vulnerability", "Severity"],
+                        headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
                         tablefmt="rounded_grid"
                     )
                     print(table)
+                    print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
 
     except ValueError as ve:
         print(ve)

@@ -1,173 +1,181 @@
-# Aquilax Python Client
+# AquilaX Client
 
-This is a Python client for interacting with the Aquilax API. It allows you to easily manage organizations, groups, initiate scans and to get scan results by making request to the Aquilax server.
+A command-line interface (CLI) tool for interacting with the AquilaX AppSec platform. It allows you to initiate security scans on Git repositories, retrieve scan results, and manage authentication and configuration.
 
 ## Features
 
-- Create an organization
-- Create a group within an organization
-- Start a scan on a given Git repository
-- Get scan results for a given Git repository
-- Get all organizations
-- Get all groups
-- Get all scans 
+- Authenticate with AquilaX using API tokens
+- Start security scans on Git repositories
+- Retrieve scan details and findings
+- Support for CI/CD pipelines with failure thresholds
+- Sync mode for real-time scan monitoring
+- Fetch organizations and groups
 
-
-### Prerequisites
+## Prerequisites
 
 - Python 3.7 or higher
 - `pip` package manager
- 
-### Set Up the Environment
-Create and activate a virtual environment:
 
-``` bash
-python3 -m venv env
-source env/bin/activate  # On Windows, use `env\Scripts\activate`
-```
+## Installation
 
-### Installation
+### From PyPI
 ```bash
-# install from PyPI
 pip install aquilax
 ```
-## Usage Command Structure and General Usage
 
-To run the client, use the following structure:```aquilax <command> [options]```The Aquilax API Client supports the following commands:- org: Create an organization.- group: Create a group within an organization.- scan: Start a scan for a specific group.- get-scan-details: Retrieve details of a specific scan.
+### From Source
+```bash
+git clone https://github.com/AquilaX-AI/AquilaX-Client.git
+cd AquilaX-Client
+pip install -e .
+```
 
-### **Command: login**
-> Authenticate yourself using API token
+## Usage
 
-> **Example Usage:**
+The general command structure is: `aquilax <command> [options]`
+
+### Authentication
+
+#### Login
+Authenticate with your AquilaX API token.
+
 ```bash
 aquilax login <token>
 ```
-> **Example Usage (on-prem):**
+
+For on-premise installations:
 ```bash
-aquilax login <token> --server "https://aquilax.org.local"
+aquilax login <token> --server "https://your-aquilax-server.com"
 ```
 
-### Configuration
-> Set organization or group as default.
+#### Logout
+Remove stored authentication credentials.
 
-> **Example Usage:**
-```bash
-aquilax --set-org "org_id"
-```
-```bash
-aquilax --set-group "group_id"
-```
-### **Command: get**
-> Get details of organization, groups & scans
-
-> **Example Usage:**
-```bash
-aquilax get orgs
-```
-```bash
-aquilax get groups #requires to set default org
-```
-```bash
-aquilax get scans #requires to set default org & group
-```
-
-### **Command: org**
-> Creates a new organization with specified details.
-
-**Options**: --name (required): The name of the organization.--description (optional, default: "Default Org"): A brief description of the organization.--business-name (optional, default: "Aquilax"): The business name associated with the organization.--website (optional, default: "aquilax.io"): The organization's website URL.--org-pic (optional, default: a predefined image URL): The URL of the organization's picture.--usage (optional, default: "Business"): The usage type for the organization.
-
-> **Example Usage:**
-```bash
-aquilax org --name "My Organization" --description "Org Desc" --business-name "Tech" --website "test.com" --usage "Business"
-```
-
-### **Command: get orgs**
-> Get All Organizations
-**Example Usage:**
-```bash
-aquilax get orgs
-```
-
-### **Command: group**
-> Creates a new group within an existing organization.
-
-**Options:** --org-id (required): The ID of the organization in which to create the group.--name (required): The name of the group.--description (optional, default: "To test all the prod apps"): A brief description of the group.--tags (optional, default: ['default', 'dev']): Tags associated with the group.
-
-```bash
-aquilax group --org-id "org123" --name "Development Group" --description "Group for devs" --tags "dev" "team"
-```
-
-### **Command: get groups**
-> Get All Groups
-**Example Usage:**
-```bash
-aquilax get groups --org-id "your-org-id"
-```
-
-### **Command: scan**
-> Starts a scan for a specific group within an organization.
-
-**Options:** --org-id (required): The ID of the organization.--group-id (required): The ID of the group.--git-uri (required): The URI of the Git repository to scan.--scanners (optional, default: ['pii_scanner']): A list of scanners to use.--public (optional, default: True): Whether the scan should be public.--frequency (optional, default: Once): The frequency of the scan (e.g., Once).--tags (optional, default: ['github', 'python', 'django']): Tags associated with the scan.
-
-```bash
-aquilax scan https://github.com/user/repo
-```
-
-```bash
-aquilax scan https://github.com/user/repo --sync #tail logs
-```
-
-```bash
-aquilax scan --org-id "org123" --group-id "group456" --git-uri "https://github.com/user/repo" --scanners "sast_scanner" "iac_scanner" --public True --frequency Once --tags "security" "audit"
-```
-
-### **Command: get scan-details**
-> Retrieves the details of a specific scan.
-
-**Options:** --org-id (required): The ID of the organization.--group-id (required): The ID of the group.--project-id (required): The ID of the project.--scan-id (required): The ID of the scan.
-```bash
-aquilax get scan-details --org-id "org123" --group-id "group456" --project-id "proj789" --scan-id "scan101"
-```
-
-```bash
-aquilax get scan-details --project-id "proj789" --scan-id "scan101"
-```
-
-### **Command: get scans**
-> Get All Scans
-**Example Usage:**
-**Example Usage:**
-```bash
-aquilax get scans #requires to set org as default
-```
-```bash
-aquilax get scans --org-id "your-org-id"
-```
-
-### **Command: get scans**
-- logout
 ```bash
 aquilax logout
 ```
 
-### Command-Line Arguments
-- aquilax org --name: The name of the organization to create.
-- aquilax group --name: The name of the group to create within the organization.
-- aquilax --gitUri: The Git URI of the repository to scan.
+### Configuration
+
+Set default organization and group IDs to avoid specifying them in every command.
+
+```bash
+aquilax --set-org <org_id>
+aquilax --set-group <group_id>
+```
+
+### Scanning
+
+#### Start a Scan
+Initiate a security scan on a Git repository.
+
+```bash
+aquilax scan <git_uri> [--scanners <scanner1> <scanner2>] [--branch <branch>] [--sync]
+```
+
+Options:
+- `--scanners`: List of scanners (default: pii_scanner, secret_scanner, iac_scanner, sast_scanner, sca_scanner, container_scanner, image_scanner, cicd_scanner)
+- `--branch`: Git branch to scan (default: main)
+- `--sync`: Enable sync mode to monitor scan progress in real-time
+
+#### CI/CD Scan
+Run a scan optimized for CI/CD pipelines with failure thresholds.
+
+```bash
+aquilax ci-scan <git_uri> [--org-id <org_id>] [--group-id <group_id>] [--fail-on-vulns] [--branch <branch>] [--sync] [--format <json|table>]
+```
+
+Options:
+- `--org-id`: Organization ID (uses default if not specified)
+- `--group-id`: Group ID (uses default if not specified)
+- `--fail-on-vulns`: Exit with error code if vulnerabilities are found
+- `--branch`: Git branch to scan (default: main)
+- `--sync`: Enable sync mode
+- `--format`: Output format (default: table)
+- `--output-dir`: Directory to save PDF reports
+- `--save-pdf`: Save PDF report locally
+
+### Retrieving Data
+
+#### Pull Scan Results
+Fetch details of a completed scan by scan ID.
+
+```bash
+aquilax pull <scan_id> [--org-id <org_id>] [--group-id <group_id>] [--format <json|table>]
+```
+
+#### Get Organizations
+List all organizations accessible to the authenticated user.
+
+```bash
+aquilax get orgs
+```
+
+#### Get Groups
+List all groups within an organization.
+
+```bash
+aquilax get groups [--org-id <org_id>]
+```
+
+#### Get Scan Details
+Retrieve detailed information about a specific scan.
+
+```bash
+aquilax get scan-details --scan-id <scan_id> [--org-id <org_id>] [--group-id <group_id>] [--format <json|table>]
+```
+
+### Version
+Display the client version.
+
+```bash
+aquilax --version
+```
+## Examples
+
+### Basic Scan
+```bash
+aquilax login your_api_token
+aquilax --set-org your_org_id
+aquilax --set-group your_group_id
+aquilax scan https://github.com/your-org/your-repo --sync
+```
+
+### CI/CD Integration
+```bash
+aquilax ci-scan https://github.com/your-org/your-repo --fail-on-vulns --format json
+```
+
+### Retrieve Scan Results
+```bash
+aquilax pull scan_id_123 --format table
+```
+
+## Security Policy Thresholds
+
+The client fetches security policy thresholds from your group's configuration in AquilaX. Scans will fail if vulnerabilities exceed these thresholds (configurable per group for HIGH, MEDIUM, LOW, CRITICAL, total).
 
 ## Contributing
+
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
 ## Error Handling
-If the API token is not provided or if any request fails, the client will raise an appropriate error and log the details.
+
+The client handles API errors gracefully and provides informative messages. Ensure your API token is valid and you have access to the specified organizations and groups.
 
 ## Troubleshooting
-- Module Import Errors: Ensure your environment is activated and the package is installed.
-- Unauthorized Error: Ensure the AQUILAX_AUTH environment variable is set correctly.
 
-## Clone the Repository
+- **Module Import Errors**: Ensure the virtual environment is activated and the package is installed.
+- **Unauthorized Error**: Verify your API token is correct and has the necessary permissions.
+- **Scan Failures**: Check that the Git repository is accessible and the branch exists.
+- **Threshold Errors**: Ensure your group has security policy thresholds configured in AquilaX.
 
-```bash
-git clone https://github.com/AquilaX-AI/AquilaX-Client.git
-cd AquilaX-Client
-```
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For issues and questions:
+- 📧 Email: support@aquilax.ai
+- 🌐 Website: https://aquilax.ai
