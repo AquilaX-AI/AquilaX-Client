@@ -802,7 +802,7 @@ def main():
                     print(f"{Fore.YELLOW}Warning: Failed to generate SARIF report: {str(e)}{Style.RESET_ALL}")
 
                 try:
-                    dashboard_link = f"https://aquilax.ai/app/scan/{org_id}/{scan_id}/{group_id}"
+                    dashboard_link = f"https://aquilax.ai/app/dashboard/scan-v2/{scan_id}/?org={org_id}&group={group_id}"
                     print("\n--------------")
                     print(f"View the full scan results on the dashboard: {Fore.BLUE}{dashboard_link}{Style.RESET_ALL}")
                     print("\n")
