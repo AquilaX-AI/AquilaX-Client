@@ -3,6 +3,7 @@ from .config import ClientConfig
 from .logger import logger
 import json
 import os
+import re
 
 CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
 
@@ -16,6 +17,34 @@ def save_config(config):
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     with open(CONFIG_PATH, 'w') as f:
         json.dump(config, f, indent=4)
+
+def normalize_azure_url(git_uri):
+    """
+    Normalize Azure DevOps URLs by removing embedded usernames.
+    
+    Converts:
+        https://username@dev.azure.com/org/project/_git/repo
+    To:
+        https://dev.azure.com/org/project/_git/repo
+    
+    Args:
+        git_uri: The Git URI to normalize
+        
+    Returns:
+        Normalized Git URI
+    """
+    # Pattern to match Azure DevOps URLs with embedded username
+    # Matches: https://username@dev.azure.com/...
+    azure_pattern = r'(https?://)([^@]+)@(dev\.azure\.com/.+)'
+    
+    match = re.match(azure_pattern, git_uri)
+    if match:
+        # Reconstruct URL without the username
+        normalized_url = f"{match.group(1)}{match.group(3)}"
+        logger.info(f"Normalized Azure URL: {git_uri} -> {normalized_url}")
+        return normalized_url
+    
+    return git_uri
 
 class APIClient:
     def __init__(self):
@@ -48,8 +77,11 @@ class APIClient:
             print("If you don't have an API token, please visit https://aquilax.ai to generate one.")
 
     def start_scan(self, org_id, group_id, git_uri, branch):
+        # Normalize Azure DevOps URLs (remove embedded username)
+        normalized_git_uri = normalize_azure_url(git_uri)
+        
         data = {
-            'git_uri': git_uri,
+            'git_uri': normalized_git_uri,
             'branch': branch,
             'initiated': "cli"
         }
