@@ -11,6 +11,7 @@ import time
 import colorama
 from colorama import Fore, Style
 import re
+import shutil
 
 colorama.init(autoreset=True)
 CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
@@ -70,6 +71,72 @@ def color_severity(severity):
     else:
         return severity 
     
+def _term_width():
+    """Return the current terminal/runner column width (min 80, default 120)."""
+    try:
+        return max(80, shutil.get_terminal_size(fallback=(120, 24)).columns)
+    except Exception:
+        return 120
+
+
+def print_findings_table(rows, headers, title=None):
+    """Print a findings table that adapts to the available terminal width.
+
+    On wide terminals (>=120 cols) a bordered rounded_grid is used.
+    On narrow terminals a plain `simple` format is used and each column is
+    capped so the total row width stays within the available space.
+    """
+    width = _term_width()
+    if title:
+        print(title)
+
+    if not rows:
+        return
+
+    if width >= 120:
+        # Comfortable width — use full bordered style with generous col caps
+        col_caps = {
+            "Scanner":       18,
+            "Path":          30,
+            "Vulnerability": 45,
+            "Severity":       8,
+            "CWE":           20,
+            "OWASP":         20,
+        }
+        fmt = "rounded_grid"
+    else:
+        # Narrow runner / terminal — drop borders, tighten every column
+        # Reserve ~3 chars per separator and ~2 for the severity col itself
+        n_cols = len(headers)
+        overhead = n_cols * 3          # spaces between columns
+        budget   = width - overhead
+        # Fixed widths: Severity=8, Scanner=12; split the rest between Path & Vuln
+        fixed    = 8 + 12             # Severity + Scanner
+        flexible = max(10, budget - fixed)
+        path_w   = max(10, flexible // 3)
+        vuln_w   = max(15, flexible - path_w)
+        col_caps = {
+            "Scanner":       12,
+            "Path":          path_w,
+            "Vulnerability": vuln_w,
+            "Severity":       8,
+            "CWE":           15,
+            "OWASP":         15,
+        }
+        fmt = "simple"
+
+    # Build per-column maxcolwidths list in header order
+    max_widths = [col_caps.get(h, 20) for h in headers]
+
+    table = tabulate(
+        rows,
+        headers=headers,
+        tablefmt=fmt,
+        maxcolwidths=max_widths,
+    )
+    print(table)
+
+
 def print_status_and_findings(status, findings, loading_index):
     clear_console()
     print(f"Scan Status: {status} {show_loading_indicator(loading_index)}")
@@ -82,12 +149,12 @@ def print_status_and_findings(status, findings, loading_index):
                 color_severity(severity)
             ) for scanner, path, vulnerability, severity in findings
         ]
-        table = tabulate(
+        print()
+        print_findings_table(
             colored_findings,
             headers=["Scanner", "Path", "Vulnerability", "Severity"],
-            tablefmt="rounded_grid"
+            title="Findings:",
         )
-        print(f"\nFindings:\n{table}")
 
 
 def save_config(config):
@@ -443,13 +510,11 @@ def main():
 
                 all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
                 if all_findings:
-                    print("\nFindings Summary:")
-                    findings_table = tabulate(
+                    print_findings_table(
                         all_findings,
                         headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
-                        tablefmt="rounded_grid"
+                        title="\nFindings Summary:",
                     )
-                    print(findings_table)
                     print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
                 else:
                     print(f"{Fore.GREEN}No findings across all scanners.{Style.RESET_ALL}")
@@ -567,13 +632,11 @@ def main():
                             all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
                             if all_findings:
-                                print("\nFindings Summary:")
-                                findings_table = tabulate(
+                                print_findings_table(
                                     all_findings,
                                     headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
-                                    tablefmt="rounded_grid"
+                                    title="\nFindings Summary:",
                                 )
-                                print(findings_table)
                                 print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
                             else:
                                 print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
@@ -697,20 +760,8 @@ def main():
                             # Save SARIF results for CI/CD artifact upload
                             try:
                                 print("\nGenerating SARIF report...")
-                                # Add a small delay to ensure backend has processed SARIF data
-                                time.sleep(2)
-                                sarif_data = client.get_scan_results_sarif(org_id, group_id, scan_id)
-                                
-                                # Check if SARIF has results
+                                sarif_data = convert_to_sarif(scan_details, scan_id)
                                 sarif_results_count = len(sarif_data.get('runs', [{}])[0].get('results', []))
-                                
-                                # If backend returns empty SARIF but we have findings, convert client-side
-                                if sarif_results_count == 0 and total_findings > 0:
-                                    logger.warning(f"Backend SARIF returned empty results despite {total_findings} findings. Using client-side conversion.")
-                                    print(f"{Fore.YELLOW}Backend SARIF empty - using client-side conversion...{Style.RESET_ALL}")
-                                    sarif_data = convert_to_sarif(scan_details, scan_id)
-                                    sarif_results_count = len(sarif_data.get('runs', [{}])[0].get('results', []))
-                                
                                 sarif_file_path = os.path.join(os.getcwd(), 'results.sarif')
                                 with open(sarif_file_path, 'w') as sarif_file:
                                     json.dump(sarif_data, sarif_file, indent=2)
@@ -763,13 +814,11 @@ def main():
                     all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
                     if all_findings:
-                        print("\nFindings Summary:")
-                        findings_table = tabulate(
+                        print_findings_table(
                             all_findings,
                             headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
-                            tablefmt="rounded_grid"
+                            title="\nFindings Summary:",
                         )
-                        print(findings_table)
                         print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
                     else:
                         print(f"{Fore.GREEN}No vulnerabilities found.{Style.RESET_ALL}")
@@ -779,20 +828,8 @@ def main():
                 # Save SARIF results for CI/CD artifact upload
                 try:
                     print("\nGenerating SARIF report...")
-                    # Add a small delay to ensure backend has processed SARIF data
-                    time.sleep(2)
-                    sarif_data = client.get_scan_results_sarif(org_id, group_id, scan_id)
-                    
-                    # Check if SARIF has results
+                    sarif_data = convert_to_sarif(scan_details, scan_id)
                     sarif_results_count = len(sarif_data.get('runs', [{}])[0].get('results', []))
-                    
-                    # If backend returns empty SARIF but we have findings, convert client-side
-                    if sarif_results_count == 0 and total_findings > 0:
-                        logger.warning(f"Backend SARIF returned empty results despite {total_findings} findings. Using client-side conversion.")
-                        print(f"{Fore.YELLOW}Backend SARIF empty - using client-side conversion...{Style.RESET_ALL}")
-                        sarif_data = convert_to_sarif(scan_details, scan_id)
-                        sarif_results_count = len(sarif_data.get('runs', [{}])[0].get('results', []))
-                    
                     sarif_file_path = os.path.join(os.getcwd(), 'results.sarif')
                     with open(sarif_file_path, 'w') as sarif_file:
                         json.dump(sarif_data, sarif_file, indent=2)
@@ -876,12 +913,10 @@ def main():
                         print("No findings across all scanners.")
                         return
 
-                    table = tabulate(
+                    print_findings_table(
                         all_findings,
                         headers=["Scanner", "Path", "Vulnerability", "Severity", "CWE", "OWASP"],
-                        tablefmt="rounded_grid"
                     )
-                    print(table)
                     print(f"{Fore.YELLOW}Total vulnerabilities found: {total_findings} (Breakdown: {severity_counts}){Style.RESET_ALL}")
 
     except ValueError as ve:
