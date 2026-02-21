@@ -79,12 +79,38 @@ def _term_width():
         return 120
 
 
-def print_findings_table(rows, headers, title=None):
-    """Print a findings table that adapts to the available terminal width.
+def _truncate(value, max_len):
+    """Truncate a string to max_len chars, appending '...' if cut."""
+    s = str(value)
+    # Strip ANSI color codes for length measurement, but keep the original
+    # for display — only truncate the visible part
+    ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
+    visible = ansi_escape.sub('', s)
+    if len(visible) <= max_len:
+        return s
+    # Find the cut point in the original (with ANSI), keeping color codes intact
+    cut = max_len - 3
+    plain_count = 0
+    i = 0
+    while i < len(s) and plain_count < cut:
+        if s[i] == '\x1b':
+            # Skip the entire ANSI sequence
+            while i < len(s) and s[i] != 'm':
+                i += 1
+            i += 1  # skip 'm'
+        else:
+            plain_count += 1
+            i += 1
+    return s[:i] + '...'
 
-    On wide terminals (>=120 cols) a bordered rounded_grid is used.
-    On narrow terminals a plain `simple` format is used and each column is
-    capped so the total row width stays within the available space.
+
+def print_findings_table(rows, headers, title=None):
+    """Print a findings table where every finding is exactly one log line.
+
+    Values are pre-truncated before being passed to tabulate so that
+    tabulate never needs to wrap a cell across multiple lines.
+    This works correctly in CI runners, GitLab log viewers, and local
+    terminals of any width.
     """
     width = _term_width()
     if title:
@@ -93,28 +119,26 @@ def print_findings_table(rows, headers, title=None):
     if not rows:
         return
 
+    n_cols = len(headers)
+
     if width >= 120:
-        # Comfortable width — use full bordered style with generous col caps
+        # Wide — generous column caps, no-border simple format
         col_caps = {
             "Scanner":       18,
-            "Path":          30,
-            "Vulnerability": 45,
+            "Path":          35,
+            "Vulnerability": 50,
             "Severity":       8,
-            "CWE":           20,
-            "OWASP":         20,
+            "CWE":           25,
+            "OWASP":         25,
         }
-        fmt = "rounded_grid"
     else:
-        # Narrow runner / terminal — drop borders, tighten every column
-        # Reserve ~3 chars per separator and ~2 for the severity col itself
-        n_cols = len(headers)
-        overhead = n_cols * 3          # spaces between columns
-        budget   = width - overhead
-        # Fixed widths: Severity=8, Scanner=12; split the rest between Path & Vuln
-        fixed    = 8 + 12             # Severity + Scanner
-        flexible = max(10, budget - fixed)
-        path_w   = max(10, flexible // 3)
-        vuln_w   = max(15, flexible - path_w)
+        # Narrow — scale everything down proportionally
+        overhead  = n_cols * 3          # ~3 chars of whitespace per separator
+        budget    = width - overhead
+        fixed     = 8 + 12              # Severity + Scanner fixed widths
+        flexible  = max(10, budget - fixed)
+        path_w    = max(10, flexible // 3)
+        vuln_w    = max(15, flexible - path_w)
         col_caps = {
             "Scanner":       12,
             "Path":          path_w,
@@ -123,16 +147,19 @@ def print_findings_table(rows, headers, title=None):
             "CWE":           15,
             "OWASP":         15,
         }
-        fmt = "simple"
 
-    # Build per-column maxcolwidths list in header order
-    max_widths = [col_caps.get(h, 20) for h in headers]
+    caps = [col_caps.get(h, 20) for h in headers]
+
+    # Pre-truncate every cell — one row always = one output line
+    truncated_rows = [
+        tuple(_truncate(cell, caps[i]) for i, cell in enumerate(row))
+        for row in rows
+    ]
 
     table = tabulate(
-        rows,
+        truncated_rows,
         headers=headers,
-        tablefmt=fmt,
-        maxcolwidths=max_widths,
+        tablefmt="simple",   # no borders — cleanest for any terminal/CI log
     )
     print(table)
 
