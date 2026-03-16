@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
 
-[Installation](#-installation) • [Quick Start](#-quick-start) • [Features](#-features) • [Documentation](#-documentation) • [Support](#-support)
+[Installation](#-installation) • [Quick Start](#-quick-start) • [Features](#-features) • [Local Analysis](#-local-code-analysis) • [Documentation](#-documentation) • [Support](#-support)
 
 </div>
 
@@ -53,6 +53,15 @@ Scan your code for various security vulnerabilities with specialized scanners:
 - **Save Preferences** - Store your frequently used settings to save time
 - **On-Premise Ready** - Works with self-hosted AquilaX installations
 - **Any Branch** - Scan any Git branch, not just main
+
+### 🔎 Local Code Analysis
+Scan local files and directories instantly — no Git repository required:
+
+- **Single File** - Analyze one file at a time (`aquilax analyze app.py`)
+- **Entire Project** - Scan all code files recursively (`aquilax analyze .`)
+- **Incremental Reports** - Results are merged into a persistent report; re-scanning a file updates only that file's findings
+- **AI-Powered Findings** - Each finding includes severity, CWE references, description, and remediation guidance
+- **Dual Output** - Generates a professional Markdown report and a structured JSON file in `.aquilax/`
 
 ### 📈 Detailed Security Reports
 - **Industry Standards** - See how issues map to OWASP Top 10 security risks
@@ -111,7 +120,21 @@ aquilax --set-org YOUR_ORG_ID
 aquilax --set-group YOUR_GROUP_ID
 ```
 
-### 3. Run Your First Scan
+### 3. Analyze Local Code
+
+Scan a local file or your entire project instantly:
+
+```bash
+# Scan a single file
+aquilax analyze app.py
+
+# Scan your entire project
+aquilax analyze .
+```
+
+Reports are saved to `.aquilax/aquilax_ai_findings.md` and `.aquilax/data/aquilax_ai_findings.json` in the target directory.
+
+### 4. Run a Remote Repository Scan
 
 Start a security scan with real-time monitoring:
 
@@ -251,6 +274,115 @@ security_scan:
     pip install aquilax
     aquilax login ${{ secrets.AQUILAX_TOKEN }}
     aquilax ci-scan ${{ github.repository }} --fail-on-vulns
+```
+
+---
+
+#### 🔎 Local Code Analysis
+
+Scan local files or directories for security vulnerabilities using AI-powered analysis. No Git repository required.
+
+```bash
+aquilax analyze <path> [options]
+```
+
+**Options:**
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--org-id` | Organization ID (overrides default) | From config |
+| `--group-id` | Group ID (overrides default) | From config |
+
+**Examples:**
+```bash
+# Scan a single file
+aquilax analyze app.py
+
+# Scan your entire project directory
+aquilax analyze .
+
+# Scan a subdirectory
+aquilax analyze src/
+
+# Override org/group for this scan
+aquilax analyze . --org-id <org_id> --group-id <group_id>
+```
+
+**Supported File Types:**
+
+Python, JavaScript, TypeScript, Java, Go, Ruby, PHP, C/C++, C#, Rust, Swift, Kotlin, Scala, Shell, YAML, Terraform, HCL, HTML, CSS, SQL, XML, Dockerfile, Makefile, and more.
+
+**Skipped Directories:**
+
+`.git`, `node_modules`, `__pycache__`, `.aquilax`, `venv`, `dist`, `build`, and other common non-source directories are automatically excluded.
+
+---
+
+### 📁 Local Code Analysis — Incremental Reports
+
+Each `analyze` run merges results into a **persistent, cumulative report** stored inside your project:
+
+```
+.aquilax/
+├── aquilax_ai_findings.md        ← Professional markdown security report
+└── data/
+    └── aquilax_ai_findings.json  ← Full structured JSON data
+```
+
+**Merge Behavior:**
+
+| Scenario | Result |
+|----------|--------|
+| First scan (`analyze app.py`) | Creates a fresh report |
+| New file (`analyze server.py`) | Appends `server.py` findings; `app.py` findings are preserved |
+| Re-scan same file (`analyze app.py` again) | Refreshes only `app.py` findings; all other files remain unchanged |
+
+This means you can build up a complete picture of your project's security posture one file (or directory) at a time.
+
+**Report Contents — `aquilax_ai_findings.md`:**
+
+| Section | Description |
+|---------|-------------|
+| Scan Overview | Last updated, first scanned, total files, risk level |
+| Severity Summary | Count and percentage breakdown per severity level |
+| Files Analyzed | Per-file finding count |
+| Detailed Findings | Full finding details grouped by severity (CRITICAL → HIGH → MEDIUM → LOW) |
+| CWE Details | Inline MITRE CWE references with links |
+
+Each finding includes:
+- **Severity** — CRITICAL / HIGH / MEDIUM / LOW
+- **File & line numbers** — Exact location of the vulnerability
+- **Confidence, Impact, Likelihood** — Risk assessment dimensions
+- **CWE references** — Linked to the MITRE CWE database
+- **Description** — What the vulnerability is and why it's dangerous
+- **Recommendation** — Specific remediation guidance
+- **Scan timestamp** — When this file was last scanned
+
+**Report Contents — `aquilax_ai_findings.json`:**
+
+```json
+{
+  "first_scanned": "2026-03-17 10:00:00",
+  "last_updated":  "2026-03-17 14:32:00",
+  "files_scanned": ["app.py", "server.py"],
+  "total_findings": 3,
+  "severity_counts": { "CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 0, "UNKNOWN": 0 },
+  "findings": [
+    {
+      "file": "app.py",
+      "scanned_at": "2026-03-17 14:32:00",
+      "vuln": "SQL Injection: query = \"SELECT * FROM users WHERE id = '\" + user_input",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "impact": "HIGH",
+      "likelihood": "MEDIUM",
+      "cwe": ["CWE-89: Improper Neutralization of Special Elements used in an SQL Command"],
+      "message": "SQL injection vulnerability due to direct concatenation of user input.",
+      "recommendation": "Use parameterized queries or an ORM to prevent SQL injection.",
+      "affected_code_line_start": 12,
+      "affected_code_line_end": 12
+    }
+  ]
+}
 ```
 
 ---
@@ -560,9 +692,10 @@ Need help? We're here for you!
 
 ## 🗺️ What's Coming Next
 
-- [ ] **SARIF Export** - Export scan results in SARIF format
+- [x] **SARIF Export** - Export CI/CD scan results in SARIF format
+- [x] **Local Code Analysis** - Scan local files and directories with AI-powered detection
+- [x] **Incremental Reports** - Persistent, cumulative security reports with per-file merge
 - [ ] **IDE Plugins** - Use AquilaX directly in VS Code and IntelliJ
-- [ ] **Custom Reports** - Generate PDF and HTML reports
 - [ ] **Instant Notifications** - Get alerts via Slack, Teams, or email
 - [ ] **Advanced Filters** - Filter results by severity, type, or file
 
@@ -570,12 +703,14 @@ Need help? We're here for you!
 
 ## 🌟 Why Choose AquilaX CLI?
 
-✅ **Complete Security Coverage** - Multiple specialized scanners in one tool  
-✅ **Fast & Efficient** - Quick scans without slowing down your workflow  
-✅ **Works Everywhere** - Compatible with any Git repository  
-✅ **Automation Ready** - Perfect for CI/CD pipelines  
-✅ **Easy to Use** - Clean, understandable output  
-✅ **Enterprise Trusted** - Used by security teams worldwide  
+✅ **Complete Security Coverage** - Multiple specialized scanners in one tool
+✅ **Local + Remote** - Scan local files/directories or remote Git repositories
+✅ **AI-Powered Analysis** - Instant, intelligent findings with remediation guidance
+✅ **Incremental Reports** - Persistent reports that merge across scan runs
+✅ **Fast & Efficient** - Quick scans without slowing down your workflow
+✅ **Automation Ready** - Perfect for CI/CD pipelines
+✅ **Easy to Use** - Clean, color-coded terminal output and professional markdown reports
+✅ **Enterprise Trusted** - Used by security teams worldwide
 
 ---
 

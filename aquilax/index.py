@@ -383,13 +383,82 @@ def print_thresholds_and_fail_check(severity_counts, total_findings, client, org
         print("Vulnerabilities found. Failing the pipeline.")
         sys.exit(1)
 
+def _print_welcome(version):
+    W  = Style.BRIGHT + Fore.WHITE
+    C  = Style.BRIGHT + Fore.CYAN
+    DIM = Style.DIM   + Fore.WHITE
+    R  = Style.RESET_ALL
+
+    banner = f"""
+{C}
+  █████╗  ██████╗ ██╗   ██╗██╗██╗      █████╗ ██╗  ██╗
+ ██╔══██╗██╔═══██╗██║   ██║██║██║     ██╔══██╗╚██╗██╔╝
+ ███████║██║   ██║██║   ██║██║██║     ███████║ ╚███╔╝
+ ██╔══██║██║▄▄ ██║██║   ██║██║██║     ██╔══██║ ██╔██╗
+ ██║  ██║╚██████╔╝╚██████╔╝██║███████╗██║  ██║██╔╝ ██╗
+ ╚═╝  ╚═╝ ╚══▀▀═╝  ╚═════╝ ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+{R}"""
+
+    print(banner)
+    print(f"  {W}AI-Powered Application Security Platform{R}  {DIM}v{version}{R}")
+    print(f"  {DIM}https://aquilax.ai{R}")
+    print()
+
+    w = _term_width()
+    print(Fore.CYAN + Style.BRIGHT + "─" * min(w, 70) + R)
+    print()
+
+    commands = [
+        ("login <token>",      "Authenticate with your AquilaX API token"),
+        ("logout",             "Remove saved credentials"),
+        ("analyze <path>",     "Scan a local file or directory for vulnerabilities"),
+        ("scan <git-uri>",     "Start a remote repository scan"),
+        ("ci-scan <git-uri>",  "Run a scan in CI/CD mode with threshold enforcement"),
+        ("pull <scan-id>",     "Fetch and display results of a previous scan"),
+        ("get orgs",           "List all organizations you have access to"),
+        ("get groups",         "List all groups within an organization"),
+        ("get scan-details",   "Show full details of a specific scan"),
+    ]
+
+    options = [
+        ("--set-org <id>",     "Save a default organization ID"),
+        ("--set-group <id>",   "Save a default group ID"),
+        ("-v, --version",      "Show the installed version"),
+    ]
+
+    cmd_col  = 26
+    desc_col = 44
+
+    print(f"  {W}COMMANDS{R}")
+    print()
+    for cmd, desc in commands:
+        cmd_str  = f"{Fore.CYAN}{Style.BRIGHT}aquilax {cmd}{R}"
+        pad      = max(1, cmd_col - len(cmd))
+        print(f"    {cmd_str}{' ' * pad}{DIM}{desc}{R}")
+    print()
+
+    print(f"  {W}OPTIONS{R}")
+    print()
+    for opt, desc in options:
+        opt_str = f"{Fore.YELLOW}{opt}{R}"
+        pad     = max(1, cmd_col - len(opt) + 8)
+        print(f"    {opt_str}{' ' * pad}{DIM}{desc}{R}")
+    print()
+
+    print(Fore.CYAN + Style.BRIGHT + "─" * min(w, 70) + R)
+    print()
+    print(f"  {DIM}Run {R}{Fore.CYAN}aquilax <command> --help{R}{DIM} for detailed usage of any command.{R}")
+    print()
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Aquilax API Client")
+    parser = argparse.ArgumentParser(description="Aquilax API Client", add_help=False)
 
     config = load_config()
 
     # Get the version from the VERSION file
     version = get_version()
+    parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
     parser.add_argument('-v', '--version', action='version', version=f'Aquilax Client {version}', help="aquilax version check")
 
     subparsers = parser.add_subparsers(dest='command', help="Available commands")
@@ -452,6 +521,12 @@ def main():
     login_parser.add_argument('--server', default=default_server, help='AquilaX Server in use (default: https://aquilax.ai)')
 
     logout_parser = subparsers.add_parser('logout', help='Logout and remove the API token')
+
+    # Analyze command
+    analyze_parser = subparsers.add_parser('analyze', help='Scan a local file or directory for vulnerabilities')
+    analyze_parser.add_argument('target', help='File path or directory to analyze (e.g., app.py or .)')
+    analyze_parser.add_argument('--org-id', help='Organization ID')
+    analyze_parser.add_argument('--group-id', help='Group ID')
 
     args = parser.parse_args()
 
@@ -537,8 +612,8 @@ def main():
         print(f"Default Group ID set to '{args.set_group}' and saved.")
         return
 
-    if not args.command:
-        parser.print_help()
+    if getattr(args, 'help', False) or not args.command:
+        _print_welcome(version)
         return
 
     try:
@@ -852,6 +927,351 @@ def main():
                 print(f"{Fore.RED}Unable to start the scan.{Style.RESET_ALL}")
                 sys.exit(0)
 
+
+        elif args.command == 'analyze':
+            org_id = args.org_id or config.get('org_id')
+            group_id = args.group_id or config.get('group_id')
+
+            if not org_id:
+                print("Organization ID is not set. Please provide it using --org-id or set a default using --set-org.")
+                return
+            if not group_id:
+                print("Group ID is not set. Please provide it using --group-id or set a default using --set-group.")
+                return
+
+            target = os.path.abspath(args.target)
+
+            # Collect files to scan
+            CODE_EXTENSIONS = {
+                '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rb', '.php',
+                '.cs', '.cpp', '.c', '.h', '.hpp', '.rs', '.swift', '.kt', '.scala',
+                '.sh', '.bash', '.yml', '.yaml', '.tf', '.hcl', '.html', '.css', '.sql', '.xml'
+            }
+            SKIP_DIRS = {
+                '.git', 'node_modules', '__pycache__', '.aquilax', 'venv', '.venv',
+                'dist', 'build', '.tox', 'env', 'eggs', '.eggs', 'site-packages',
+                '.pytest_cache', '.mypy_cache'
+            }
+            MAX_FILE_SIZE = 1 * 1024 * 1024  # 1 MB
+
+            files_to_scan = []
+
+            if os.path.isfile(target):
+                files_to_scan = [target]
+                target_dir = os.path.dirname(target)
+            elif os.path.isdir(target):
+                target_dir = target
+                for root, dirs, files in os.walk(target):
+                    dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+                    for fname in files:
+                        _, ext = os.path.splitext(fname)
+                        if ext.lower() in CODE_EXTENSIONS or fname in ('Dockerfile', 'Makefile'):
+                            fpath = os.path.join(root, fname)
+                            if os.path.getsize(fpath) <= MAX_FILE_SIZE:
+                                files_to_scan.append(fpath)
+            else:
+                print(f"Target not found: {args.target}")
+                return
+
+            if not files_to_scan:
+                print("No supported code files found to analyze.")
+                return
+
+            print(f"Analyzing: {args.target}")
+            print(f"Scanning {len(files_to_scan)} file(s)...\n")
+
+            # Set up output dirs and scan_date early so findings can be timestamped
+            aquilax_dir = os.path.join(target_dir, '.aquilax')
+            data_dir    = os.path.join(aquilax_dir, 'data')
+            os.makedirs(data_dir, exist_ok=True)
+
+            import datetime
+            scan_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Load existing report for incremental merge
+            json_path = os.path.join(data_dir, 'aquilax_ai_findings.json')
+            existing_report = {}
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, 'r', encoding='utf-8') as _ef:
+                        existing_report = json.load(_ef)
+                except Exception:
+                    existing_report = {}
+
+            # Files being scanned now (relative paths) — their old findings will be replaced
+            current_rel_paths = {os.path.relpath(f, target_dir) for f in files_to_scan}
+            # Keep findings from files NOT in this scan run
+            retained_findings = [
+                _f for _f in existing_report.get('findings', [])
+                if _f.get('file') not in current_rel_paths
+            ]
+
+            all_findings = []
+            severity_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'UNKNOWN': 0}
+
+            for fpath in files_to_scan:
+                rel_path = os.path.relpath(fpath, target_dir)
+                try:
+                    with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                        code = f.read()
+                except Exception as e:
+                    logger.warning(f"Could not read {fpath}: {e}")
+                    continue
+
+                if not code.strip():
+                    continue
+
+                try:
+                    findings = client.scan_code(org_id, group_id, code)
+                except requests.HTTPError as http_err:
+                    if http_err.response.status_code == 400:
+                        continue  # empty/whitespace code — skip silently
+                    logger.error(f"HTTP error scanning {rel_path}: {http_err}")
+                    print(f"{Fore.RED}Error scanning {rel_path}: {http_err}{Style.RESET_ALL}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error scanning {rel_path}: {e}")
+                    print(f"{Fore.RED}Error scanning {rel_path}: {e}{Style.RESET_ALL}")
+                    continue
+
+                for finding in findings:
+                    finding['file'] = rel_path
+                    finding['scanned_at'] = scan_date
+                    sev = finding.get('severity', 'UNKNOWN').upper()
+                    if sev in severity_counts:
+                        severity_counts[sev] += 1
+                    else:
+                        severity_counts['UNKNOWN'] += 1
+                    all_findings.append(finding)
+
+            total = sum(severity_counts.values())
+
+            # Merge retained old findings with new findings
+            merged_findings = retained_findings + all_findings
+            merged_severity_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'UNKNOWN': 0}
+            for _f in merged_findings:
+                _sev = _f.get('severity', 'UNKNOWN').upper()
+                if _sev in merged_severity_counts:
+                    merged_severity_counts[_sev] += 1
+                else:
+                    merged_severity_counts['UNKNOWN'] += 1
+            merged_total  = sum(merged_severity_counts.values())
+            merged_files  = sorted(set(existing_report.get('files_scanned', [])) | current_rel_paths)
+            first_scanned = existing_report.get('first_scanned', scan_date)
+
+            # Reassign so the rest of the code (terminal output + markdown) uses merged data
+            all_findings    = merged_findings
+            severity_counts = merged_severity_counts
+            total           = merged_total
+
+            # Print terminal table
+            if all_findings:
+                table_rows = []
+                for f in all_findings:
+                    sev = f.get('severity', 'UNKNOWN').upper()
+                    line_start = f.get('affected_code_line_start', '')
+                    line_end = f.get('affected_code_line_end', '')
+                    lines = f"{line_start}-{line_end}" if line_start != line_end else str(line_start)
+                    cwe = ', '.join(f.get('cwe', [])) if isinstance(f.get('cwe'), list) else str(f.get('cwe', 'N/A'))
+                    vuln = f.get('vuln', 'N/A')
+                    vuln = vuln[:47] + '...' if len(vuln) > 50 else vuln
+                    table_rows.append([f.get('file', 'N/A'), vuln, lines, color_severity(sev), cwe])
+
+                print_findings_table(
+                    table_rows,
+                    headers=["File", "Vulnerability", "Lines", "Severity", "CWE"],
+                )
+                print(f"\n{Fore.YELLOW}Total vulnerabilities found: {total} (Breakdown: {severity_counts}){Style.RESET_ALL}")
+            else:
+                print(f"{Fore.GREEN}No vulnerabilities found.{Style.RESET_ALL}")
+
+            # Save merged JSON report
+            json_report = {
+                'first_scanned':  first_scanned,
+                'last_updated':   scan_date,
+                'files_scanned':  merged_files,
+                'total_findings': total,
+                'severity_counts': severity_counts,
+                'findings':       all_findings,
+            }
+            with open(json_path, 'w', encoding='utf-8') as jf:
+                json.dump(json_report, jf, indent=2)
+
+            # Build professional Markdown report
+            def _sev_badge(sev):
+                badges = {
+                    'CRITICAL': '🔴 CRITICAL',
+                    'HIGH':     '🟠 HIGH',
+                    'MEDIUM':   '🟡 MEDIUM',
+                    'LOW':      '🟢 LOW',
+                    'UNKNOWN':  '⚪ UNKNOWN',
+                }
+                return badges.get(sev.upper(), sev)
+
+            def _overall_risk(counts):
+                for level in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
+                    if counts.get(level, 0) > 0:
+                        return level
+                return 'NONE'
+
+            def _extract_cwe_id(cwe_str):
+                """Extract 'CWE-306' from 'CWE-306: Some Description'."""
+                import re as _re
+                m = _re.match(r'(CWE-\d+)', str(cwe_str))
+                return m.group(1) if m else cwe_str
+
+            def _format_cwe_list(cwe_raw):
+                """Return clean CWE IDs and full descriptions from the raw list."""
+                if not isinstance(cwe_raw, list) or not cwe_raw:
+                    return 'N/A', []
+                ids   = [_extract_cwe_id(c) for c in cwe_raw]
+                return ', '.join(ids), cwe_raw  # ids string, full entries list
+
+            overall_risk       = _overall_risk(severity_counts)
+            files_scanned_list = merged_files
+
+            # Group findings by severity
+            grouped = {'CRITICAL': [], 'HIGH': [], 'MEDIUM': [], 'LOW': [], 'UNKNOWN': []}
+            for finding in all_findings:
+                sev = finding.get('severity', 'UNKNOWN').upper()
+                grouped.setdefault(sev, []).append(finding)
+
+            risk_icon = {'CRITICAL': '🔴', 'HIGH': '🟠', 'MEDIUM': '🟡', 'LOW': '🟢', 'NONE': '✅'}.get(overall_risk, '')
+
+            md = []
+
+            # ── Header ─────────────────────────────────────────────────────────────
+            md += [
+                '# AquilaX Security Report',
+                '',
+                '> AI-Powered Code Security Analysis — [aquilax.ai](https://aquilax.ai)',
+                '',
+                '---',
+                '',
+            ]
+
+            # ── Scan Overview ───────────────────────────────────────────────────────
+            md += [
+                '## Scan Overview',
+                '',
+                '| | |',
+                '|---|---|',
+                f'| **Last Updated** | {scan_date} |',
+                f'| **First Scanned** | {first_scanned} |',
+                f'| **Files in Report** | {len(merged_files)} |',
+                f'| **Total Findings** | {total} |',
+                f'| **Risk Level** | {risk_icon} {overall_risk} |',
+                '',
+                '---',
+                '',
+            ]
+
+            # ── Severity Summary ────────────────────────────────────────────────────
+            md += [
+                '## Severity Summary',
+                '',
+                '| Severity | Count | % of Total |',
+                '|----------|------:|-----------:|',
+            ]
+            for sev in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']:
+                count = severity_counts.get(sev, 0)
+                pct   = f'{round(count / total * 100)}%' if total > 0 and count > 0 else '—'
+                md.append(f'| {_sev_badge(sev)} | {count} | {pct} |')
+            md += ['', '---', '']
+
+            # ── Files Analyzed ──────────────────────────────────────────────────────
+            md += [
+                '## Files Analyzed',
+                '',
+                '| File | Findings |',
+                '|------|------:|',
+            ]
+            for fp in sorted(files_scanned_list):
+                fc = sum(1 for f in all_findings if f.get('file') == fp)
+                status = str(fc) if fc > 0 else '✅ Clean'
+                md.append(f'| `{fp}` | {status} |')
+            md += ['', '---', '']
+
+            # ── Findings ────────────────────────────────────────────────────────────
+            if all_findings:
+                md += ['## Findings', '']
+                global_idx = 1
+                for sev_level in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']:
+                    level_findings = grouped.get(sev_level, [])
+                    if not level_findings:
+                        continue
+                    md += [f'### {_sev_badge(sev_level)}', '']
+                    for finding in level_findings:
+                        sev        = finding.get('severity', 'UNKNOWN').upper()
+                        line_start = finding.get('affected_code_line_start', '')
+                        line_end   = finding.get('affected_code_line_end', '')
+                        lines      = f'{line_start}–{line_end}' if str(line_start) != str(line_end) else str(line_start)
+                        cwe_ids, cwe_full = _format_cwe_list(finding.get('cwe', []))
+                        cves_raw   = finding.get('cves', [])
+                        cves       = ', '.join(cves_raw) if cves_raw else '—'
+                        vuln_title = finding.get('vuln', 'N/A')
+
+                        md += [
+                            f'#### {global_idx}. {vuln_title}',
+                            '',
+                            '| Property | Value |',
+                            '|----------|-------|',
+                            f'| **File** | `{finding.get("file", "N/A")}` |',
+                            f'| **Line(s)** | {lines} |',
+                            f'| **Severity** | {_sev_badge(sev)} |',
+                            f'| **Confidence** | {finding.get("confidence", "N/A")} |',
+                            f'| **Impact** | {finding.get("impact", "N/A")} |',
+                            f'| **Likelihood** | {finding.get("likelihood", "N/A")} |',
+                            f'| **CWE** | {cwe_ids} |',
+                            f'| **CVEs** | {cves} |',
+                            f'| **Rule ID** | {finding.get("rule_id", "N/A")} |',
+                            '',
+                            '**Description**',
+                            '',
+                            f'{finding.get("message", "N/A")}',
+                            '',
+                            '**Recommendation**',
+                            '',
+                            f'{finding.get("recommendation", "N/A")}',
+                        ]
+
+                        # Inline CWE details if the API returned full descriptions
+                        if cwe_full and any(':' in str(c) for c in cwe_full):
+                            md += ['', '**CWE Details**', '']
+                            for entry in cwe_full:
+                                cid = _extract_cwe_id(str(entry))
+                                num = cid.replace('CWE-', '')
+                                desc = str(entry).split(':', 1)[1].strip() if ':' in str(entry) else str(entry)
+                                md.append(f'- [{cid}](https://cwe.mitre.org/data/definitions/{num}.html) — {desc}')
+
+                        md += ['', '---', '']
+                        global_idx += 1
+            else:
+                md += [
+                    '## Findings',
+                    '',
+                    '✅ No vulnerabilities were detected during this scan.',
+                    '',
+                    '---',
+                    '',
+                ]
+
+            # ── Footer ──────────────────────────────────────────────────────────────
+            md += [
+                '> **Disclaimer:** This report was generated automatically. '
+                'Results should be reviewed by a qualified security professional. '
+                'Validate findings in the context of your application before remediation.',
+                '',
+                f'*Generated on {scan_date} by [AquilaX](https://aquilax.ai)*',
+            ]
+
+            md_path = os.path.join(aquilax_dir, 'aquilax_ai_findings.md')
+            with open(md_path, 'w', encoding='utf-8') as mf:
+                mf.write('\n'.join(md))
+
+            print(f"\nReports saved to:")
+            print(f"  {Fore.CYAN}{os.path.relpath(md_path)}{Style.RESET_ALL}")
+            print(f"  {Fore.CYAN}{os.path.relpath(json_path)}{Style.RESET_ALL}")
 
         elif args.command == 'get':
             if args.get_command == 'orgs':

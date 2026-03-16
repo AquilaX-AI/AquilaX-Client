@@ -113,6 +113,19 @@ class APIClient:
         # Assuming profile returns a list of orgs under 'organizations' key; adjust based on actual API response
         return {'orgs': profile_data.get('organizations', [])}
 
+    def scan_code(self, org_id, group_id, code):
+        headers = self.headers.copy()
+        headers['Content-Type'] = 'application/json'
+        data = {'code': code}
+        response = requests.post(
+            f"{self.base_url}/v2/code/scan?org={org_id}&group={group_id}",
+            headers=headers,
+            json=data,
+            verify=self.verify_host
+        )
+        response.raise_for_status()
+        return response.json()
+
     def get_group_policy(self, org_id, group_id):
         headers = self.headers.copy()
         response = requests.get(f"{self.base_url}/v2/organization/{org_id}/groups", headers=headers, verify=self.verify_host)
