@@ -36,9 +36,11 @@ jobs:
           aquilax ci-scan \
             "$GIT_URL" \
             --org-id "$ORG_ID" \
-            --group-id "$GROUP_ID"
+            --group-id "$GROUP_ID" \
+            --sync
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: results.sarif

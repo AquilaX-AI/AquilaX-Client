@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
 
-[Installation](#-installation) • [Quick Start](#-quick-start) • [Features](#-features) • [Local Analysis](#-local-code-analysis) • [Documentation](#-documentation) • [Support](#-support)
+[Installation](#-installation) • [Quick Start](#-quick-start) • [Features](#-features) • [Local Analysis](#-local-code-analysis) • [AI Fix](#-ai-powered-fix) • [Documentation](#-documentation) • [Support](#-support)
 
 </div>
 
@@ -62,6 +62,17 @@ Scan local files and directories instantly — no Git repository required:
 - **Incremental Reports** - Results are merged into a persistent report; re-scanning a file updates only that file's findings
 - **AI-Powered Findings** - Each finding includes severity, CWE references, description, and remediation guidance
 - **Dual Output** - Generates a professional Markdown report and a structured JSON file in `.aquilax/`
+
+### 🔧 AI-Powered Fix
+Automatically fix vulnerabilities found by `analyze` using AI:
+
+- **Single File** - Fix one file at a time (`aquilax fix app.py`)
+- **Entire Project** - Fix all files in the report (`aquilax fix .`)
+- **Auto Mode** - Apply all fixes without prompts (`--auto`)
+- **Dry Run** - Preview the diff without modifying any files (`--dry-run`)
+- **Severity Filter** - Fix only HIGH and above (`--severity HIGH`)
+- **Context-Aware** - AI receives the affected lines plus surrounding context for accurate fixes
+- **Fix Reports** - Generates `.aquilax/fix.md` and `.aquilax/data/fix.json` with before/after diffs
 
 ### 📈 Detailed Security Reports
 - **Industry Standards** - See how issues map to OWASP Top 10 security risks
@@ -132,9 +143,26 @@ aquilax analyze app.py
 aquilax analyze .
 ```
 
-Reports are saved to `.aquilax/aquilax_ai_findings.md` and `.aquilax/data/aquilax_ai_findings.json` in the target directory.
+Reports are saved to `.aquilax/aquilax_ai_findings.md` and `.aquilax/data/aquilax_ai_findings.json`.
 
-### 4. Run a Remote Repository Scan
+### 4. Fix Vulnerabilities with AI
+
+Automatically fix findings from the previous `analyze` run:
+
+```bash
+# Fix a single file (interactive — confirm each fix)
+aquilax fix app.py
+
+# Fix everything without prompts
+aquilax fix . --auto
+
+# Preview fixes without modifying files
+aquilax fix app.py --dry-run
+```
+
+Fix reports are saved to `.aquilax/fix.md` and `.aquilax/data/fix.json`.
+
+### 5. Run a Remote Repository Scan
 
 Start a security scan with real-time monitoring:
 
@@ -384,6 +412,78 @@ Each finding includes:
   ]
 }
 ```
+
+---
+
+#### 🔧 AI-Powered Fix
+
+Automatically fix vulnerabilities identified by `analyze`. The AI receives the affected lines plus surrounding context to generate precise, targeted fixes.
+
+> **Requires:** Run `aquilax analyze <path>` first to generate findings.
+
+```bash
+aquilax fix <path> [options]
+```
+
+**Options:**
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--org-id` | Organization ID (overrides default) | From config |
+| `--group-id` | Group ID (overrides default) | From config |
+| `--auto` | Apply all fixes without confirmation prompts | Disabled |
+| `--dry-run` | Preview diffs without modifying any files | Disabled |
+| `--severity` | Only fix findings at or above this level (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) | All severities |
+
+**Examples:**
+```bash
+# Fix a single file — confirm each fix interactively
+aquilax fix app.py
+
+# Fix all files in the project — no prompts
+aquilax fix . --auto
+
+# Preview what would be changed without touching files
+aquilax fix app.py --dry-run
+
+# Only fix CRITICAL and HIGH findings
+aquilax fix . --severity HIGH --auto
+
+# Override org/group for this run
+aquilax fix app.py --org-id <org_id> --group-id <group_id>
+```
+
+**Interactive mode:**
+
+When run without `--auto`, each fix is shown as a diff and you are prompted:
+
+```
+  [1/2]  HIGH  SQL Injection: cursor.execute(f"SELECT * FROM users...")
+  app.py  ·  line 12
+--- a/app.py
++++ b/app.py
+@@ -10,4 +10,4 @@
+-    cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")
++    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+
+  Apply fix?  [y/n/s=skip all]
+```
+
+Type `y` to apply, `n` to skip, or `s` to skip all remaining fixes.
+
+**Output files:**
+
+```
+.aquilax/
+├── fix.md                  ← Professional markdown fix report (before/after per finding)
+└── data/
+    └── fix.json            ← Structured JSON with all applied fixes (incremental)
+```
+
+Fix reports are incremental — re-running `fix` on a file replaces only that file's entries; other files' fix history is preserved.
+
+**Auto-analyze:**
+
+If `fix` is called on a file that hasn't been analyzed yet, it automatically runs `analyze` on that file first before proceeding with fixes.
 
 ---
 
@@ -695,6 +795,7 @@ Need help? We're here for you!
 - [x] **SARIF Export** - Export CI/CD scan results in SARIF format
 - [x] **Local Code Analysis** - Scan local files and directories with AI-powered detection
 - [x] **Incremental Reports** - Persistent, cumulative security reports with per-file merge
+- [x] **AI-Powered Fix** - Automatically fix vulnerabilities with `aquilax fix`
 - [ ] **IDE Plugins** - Use AquilaX directly in VS Code and IntelliJ
 - [ ] **Instant Notifications** - Get alerts via Slack, Teams, or email
 - [ ] **Advanced Filters** - Filter results by severity, type, or file
@@ -706,6 +807,7 @@ Need help? We're here for you!
 ✅ **Complete Security Coverage** - Multiple specialized scanners in one tool
 ✅ **Local + Remote** - Scan local files/directories or remote Git repositories
 ✅ **AI-Powered Analysis** - Instant, intelligent findings with remediation guidance
+✅ **AI-Powered Fix** - Automatically fix vulnerabilities with a single command
 ✅ **Incremental Reports** - Persistent reports that merge across scan runs
 ✅ **Fast & Efficient** - Quick scans without slowing down your workflow
 ✅ **Automation Ready** - Perfect for CI/CD pipelines

@@ -412,6 +412,7 @@ def _print_welcome(version):
         ("login <token>",      "Authenticate with your AquilaX API token"),
         ("logout",             "Remove saved credentials"),
         ("analyze <path>",     "Scan a local file or directory for vulnerabilities"),
+        ("fix <path>",         "AI-powered fix for vulnerabilities found by analyze"),
         ("scan <git-uri>",     "Start a remote repository scan"),
         ("ci-scan <git-uri>",  "Run a scan in CI/CD mode with threshold enforcement"),
         ("pull <scan-id>",     "Fetch and display results of a previous scan"),
@@ -527,6 +528,19 @@ def main():
     analyze_parser.add_argument('target', help='File path or directory to analyze (e.g., app.py or .)')
     analyze_parser.add_argument('--org-id', help='Organization ID')
     analyze_parser.add_argument('--group-id', help='Group ID')
+
+    # Fix command
+    fix_parser = subparsers.add_parser('fix', help='AI-powered fix for vulnerabilities found by analyze')
+    fix_parser.add_argument('target', help='File or directory to fix (e.g., app.py or .)')
+    fix_parser.add_argument('--org-id', help='Organization ID')
+    fix_parser.add_argument('--group-id', help='Group ID')
+    fix_parser.add_argument('--auto', action='store_true',
+                            help='Apply all fixes without confirmation prompts')
+    fix_parser.add_argument('--dry-run', action='store_true',
+                            help='Preview fixes without modifying files')
+    fix_parser.add_argument('--severity', choices=['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+                            default=None,
+                            help='Only fix findings at or above this severity level')
 
     args = parser.parse_args()
 
@@ -1272,6 +1286,606 @@ def main():
             print(f"\nReports saved to:")
             print(f"  {Fore.CYAN}{os.path.relpath(md_path)}{Style.RESET_ALL}")
             print(f"  {Fore.CYAN}{os.path.relpath(json_path)}{Style.RESET_ALL}")
+
+        elif args.command == 'fix':
+            import difflib
+            import datetime
+
+            org_id   = args.org_id   or config.get('org_id')
+            group_id = args.group_id or config.get('group_id')
+
+            if not org_id:
+                print("Organization ID is not set. Please provide it using --org-id or set a default using --set-org.")
+                return
+            if not group_id:
+                print("Group ID is not set. Please provide it using --group-id or set a default using --set-group.")
+                return
+
+            target     = os.path.abspath(args.target)
+            target_dir = target if os.path.isdir(target) else os.path.dirname(target)
+
+            # Set up .aquilax dirs (create if not exist)
+            aquilax_dir = os.path.join(target_dir, '.aquilax')
+            data_dir    = os.path.join(aquilax_dir, 'data')
+            os.makedirs(data_dir, exist_ok=True)
+
+            fix_date  = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            anal_path = os.path.join(data_dir, 'aquilax_ai_findings.json')
+            fix_path  = os.path.join(data_dir, 'fix.json')
+
+            # ── Collect files in scope ─────────────────────────────────────────
+            _CODE_EXT = {
+                '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rb', '.php',
+                '.cs', '.cpp', '.c', '.h', '.hpp', '.rs', '.swift', '.kt', '.scala',
+                '.sh', '.bash', '.yml', '.yaml', '.tf', '.hcl', '.html', '.css', '.sql', '.xml'
+            }
+            _SKIP_DIRS = {
+                '.git', 'node_modules', '__pycache__', '.aquilax', 'venv', '.venv',
+                'dist', 'build', '.tox', 'env', 'eggs', '.eggs', 'site-packages',
+                '.pytest_cache', '.mypy_cache'
+            }
+            _MAX_SIZE = 1 * 1024 * 1024
+
+            files_in_scope = []
+            if os.path.isfile(target):
+                files_in_scope = [target]
+            elif os.path.isdir(target):
+                for _root, _dirs, _fnames in os.walk(target):
+                    _dirs[:] = [d for d in _dirs if d not in _SKIP_DIRS]
+                    for _fname in _fnames:
+                        _, _ext = os.path.splitext(_fname)
+                        if _ext.lower() in _CODE_EXT or _fname in ('Dockerfile', 'Makefile'):
+                            _fp = os.path.join(_root, _fname)
+                            if os.path.getsize(_fp) <= _MAX_SIZE:
+                                files_in_scope.append(_fp)
+            else:
+                print(f"Target not found: {args.target}")
+                return
+
+            if not files_in_scope:
+                print("No supported code files found.")
+                return
+
+            scope_rel = {os.path.relpath(f, target_dir) for f in files_in_scope}
+
+            # ── Load existing findings; auto-analyze missing files ─────────────
+            existing_anal = {}
+            if os.path.exists(anal_path):
+                try:
+                    with open(anal_path, 'r', encoding='utf-8') as _f:
+                        existing_anal = json.load(_f)
+                except Exception:
+                    existing_anal = {}
+
+            already_scanned = set(existing_anal.get('files_scanned', []))
+            unanalyzed      = [f for f in files_in_scope
+                               if os.path.relpath(f, target_dir) not in already_scanned]
+
+            if unanalyzed:
+                print(f"  {Fore.CYAN}◆ Scanning{Style.RESET_ALL}  {len(unanalyzed)} file(s) not yet analyzed — running analysis first\n")
+                _new_findings   = []
+                _unanalyzed_rel = {os.path.relpath(f, target_dir) for f in unanalyzed}
+
+                for _fpath in unanalyzed:
+                    _rp = os.path.relpath(_fpath, target_dir)
+                    try:
+                        with open(_fpath, 'r', encoding='utf-8', errors='ignore') as _f:
+                            _code = _f.read()
+                    except Exception as _e:
+                        logger.warning(f"Could not read {_fpath}: {_e}")
+                        continue
+                    if not _code.strip():
+                        continue
+                    try:
+                        _file_findings = client.scan_code(org_id, group_id, _code)
+                    except requests.HTTPError as _he:
+                        if _he.response.status_code == 400:
+                            continue
+                        logger.error(f"Scan error {_rp}: {_he}")
+                        continue
+                    except Exception as _e:
+                        logger.error(f"Scan error {_rp}: {_e}")
+                        continue
+                    for _ff in _file_findings:
+                        _ff['file']       = _rp
+                        _ff['scanned_at'] = fix_date
+                        _new_findings.append(_ff)
+
+                # Merge into findings report
+                _retained_a = [_f for _f in existing_anal.get('findings', [])
+                               if _f.get('file') not in _unanalyzed_rel]
+                _merged_a   = _retained_a + _new_findings
+                _merged_files_a = sorted(already_scanned | _unanalyzed_rel)
+                _merged_sev_a   = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'UNKNOWN': 0}
+                for _f in _merged_a:
+                    _s = _f.get('severity', 'UNKNOWN').upper()
+                    _merged_sev_a[_s] = _merged_sev_a.get(_s, 0) + 1
+
+                existing_anal = {
+                    'first_scanned': existing_anal.get('first_scanned', fix_date),
+                    'last_updated':  fix_date,
+                    'files_scanned': _merged_files_a,
+                    'total_findings': sum(_merged_sev_a.values()),
+                    'severity_counts': _merged_sev_a,
+                    'findings': _merged_a,
+                }
+                with open(anal_path, 'w', encoding='utf-8') as _f:
+                    json.dump(existing_anal, _f, indent=2)
+
+                _vuln_count = len(_new_findings)
+                print(f"  {Fore.GREEN}✓ Analysis done{Style.RESET_ALL}  {_vuln_count} finding(s) found\n")
+
+            report       = existing_anal
+            all_findings = report.get('findings', [])
+
+            # ── Filter findings ────────────────────────────────────────────────
+            SEVERITY_RANK = {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1, 'UNKNOWN': 0}
+            min_rank = SEVERITY_RANK.get(args.severity, 0) if args.severity else 0
+
+            candidates = [f for f in all_findings if f.get('file') in scope_rel]
+
+            findings_to_fix = [
+                f for f in candidates
+                if f.get('status') != 'fixed'
+                and SEVERITY_RANK.get(f.get('severity', 'UNKNOWN').upper(), 0) >= min_rank
+            ]
+
+            if not findings_to_fix:
+                print(f"  {Fore.GREEN}✓ Nothing to fix{Style.RESET_ALL}  No unfixed findings for '{args.target}'")
+                return
+
+            dry_tag = f"{Fore.CYAN}[dry-run]{Style.RESET_ALL} " if args.dry_run else ''
+            print(f"  {Fore.CYAN}◆ Fixing{Style.RESET_ALL}  {dry_tag}{len(findings_to_fix)} vulnerability(ies) in {Style.BRIGHT}{args.target}{Style.RESET_ALL}\n")
+
+            # ── Helpers ────────────────────────────────────────────────────────
+            FIX_SYSTEM_PROMPT = (
+                "You are a security code fixer. Fix the exact vulnerability described. "
+                "Return ONLY the corrected replacement code — no explanations, no markdown "
+                "fences, no added comments unless they were in the original code."
+            )
+
+            def _strip_fences(text):
+                text = text.strip()
+                if text.startswith('```'):
+                    lines = text.splitlines()
+                    lines = lines[1:] if lines and lines[0].startswith('```') else lines
+                    lines = lines[:-1] if lines and lines[-1].strip() == '```' else lines
+                    text = '\n'.join(lines)
+                return text
+
+            def _diff_lines(original_lines, fixed_lines, rel_path):
+                return list(difflib.unified_diff(
+                    original_lines, fixed_lines,
+                    fromfile=f'a/{rel_path}', tofile=f'b/{rel_path}', lineterm=''
+                ))
+
+            def _print_diff(diff):
+                if not diff:
+                    print(f"  {Fore.YELLOW}(no changes in diff){Style.RESET_ALL}")
+                    return
+                for line in diff:
+                    if line.startswith('+++') or line.startswith('---'):
+                        print(f"{Style.BRIGHT}{line}{Style.RESET_ALL}")
+                    elif line.startswith('+'):
+                        print(f"{Fore.GREEN}{line}{Style.RESET_ALL}")
+                    elif line.startswith('-'):
+                        print(f"{Fore.RED}{line}{Style.RESET_ALL}")
+                    elif line.startswith('@@'):
+                        print(f"{Fore.CYAN}{line}{Style.RESET_ALL}")
+                    else:
+                        print(line)
+
+            def _lang_hint(filename):
+                _ext_map = {
+                    '.py': 'python', '.js': 'javascript', '.ts': 'typescript',
+                    '.java': 'java', '.go': 'go', '.rb': 'ruby', '.php': 'php',
+                    '.cs': 'csharp', '.cpp': 'cpp', '.c': 'c', '.rs': 'rust',
+                    '.sh': 'bash', '.yaml': 'yaml', '.yml': 'yaml', '.sql': 'sql',
+                }
+                _, _e = os.path.splitext(filename)
+                return _ext_map.get(_e.lower(), '')
+
+            # ── Fix loop ───────────────────────────────────────────────────────
+            applied        = 0
+            skipped        = 0
+            failed         = 0
+            modified_files = set()
+            skip_all       = False
+            applied_fixes  = []   # records for fix.md / fix.json
+            w              = min(_term_width(), 70)
+
+            for idx, finding in enumerate(findings_to_fix, 1):
+                rel_path   = finding.get('file', '')
+                file_path  = os.path.join(target_dir, rel_path)
+                sev        = finding.get('severity', 'UNKNOWN').upper()
+                vuln_title = finding.get('vuln', 'N/A')
+                line_start = finding.get('affected_code_line_start', 0)
+                line_end   = finding.get('affected_code_line_end',   0)
+                cwe_raw    = finding.get('cwe', [])
+                cwe_str    = ', '.join(cwe_raw) if isinstance(cwe_raw, list) else str(cwe_raw)
+
+                _lines_str = f'line {line_start}' if line_start == line_end else f'lines {line_start}–{line_end}'
+                print(f"  {'─' * (w - 2)}")
+                print(f"  {Style.BRIGHT}[{idx}/{len(findings_to_fix)}]{Style.RESET_ALL}  {color_severity(sev)}  {vuln_title[:55]}")
+                print(f"  {Style.DIM}{rel_path}  ·  {_lines_str}{Style.RESET_ALL}")
+
+                if skip_all:
+                    print(f"  {Fore.YELLOW}↷ skipped{Style.RESET_ALL}\n")
+                    skipped += 1
+                    continue
+
+                # Read source file
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as src:
+                        original_content = src.read()
+                except Exception as e:
+                    print(f"  {Fore.RED}✗ cannot read file: {e}{Style.RESET_ALL}\n")
+                    failed += 1
+                    continue
+
+                original_lines = original_content.splitlines(keepends=True)
+
+                # Build prompt context — affected lines + N surrounding lines
+                CONTEXT_LINES = 10
+                has_lines = line_start > 0 and line_end > 0
+                if has_lines:
+                    snippet_lines      = original_lines[line_start - 1 : line_end]
+                    vulnerable_snippet = ''.join(snippet_lines)
+
+                    ctx_start      = max(0, line_start - 1 - CONTEXT_LINES)
+                    ctx_end        = min(len(original_lines), line_end + CONTEXT_LINES)
+                    context_before = ''.join(original_lines[ctx_start : line_start - 1])
+                    context_after  = ''.join(original_lines[line_end  : ctx_end])
+
+                    line_context = (
+                        f"Affected lines: {line_start}–{line_end}\n\n"
+                        f"Context before (lines {ctx_start + 1}–{line_start - 1}):\n{context_before}\n"
+                        f"Vulnerable code (lines {line_start}–{line_end}):\n{vulnerable_snippet}\n"
+                        f"Context after (lines {line_end + 1}–{ctx_end}):\n{context_after}\n"
+                    )
+                    fix_instruction = (
+                        f"Return ONLY the fixed replacement for lines {line_start}–{line_end}.\n"
+                        "If the fix requires changes outside those lines, return the entire corrected file "
+                        "prefixed with exactly: FULL_FILE:\n"
+                    )
+                else:
+                    # No line info — send full file as fallback
+                    line_context    = f"Full file content:\n{original_content}\n"
+                    fix_instruction = (
+                        "Return the entire corrected file prefixed with exactly: FULL_FILE:\n"
+                    )
+
+                user_prompt = (
+                    f"File: {rel_path}\n"
+                    f"Vulnerability: {vuln_title}\n"
+                    f"Severity: {sev}\n"
+                    f"CWE: {cwe_str}\n"
+                    f"Description: {finding.get('message', '')}\n"
+                    f"Recommendation: {finding.get('recommendation', '')}\n\n"
+                    f"{line_context}\n"
+                    f"{fix_instruction}"
+                )
+
+                # Call AI API
+                try:
+                    ai_result = client.ai_prompt(org_id, group_id, user_prompt, FIX_SYSTEM_PROMPT)
+                except requests.HTTPError as http_err:
+                    err_body = ''
+                    try:
+                        err_body = http_err.response.json().get('error', '')
+                    except Exception:
+                        pass
+                    if 'Pro or Ultimate' in err_body or 'plan' in err_body.lower():
+                        print(f"\n  {Fore.YELLOW}⚠  This feature requires a Pro or Ultimate plan.")
+                        print(f"     Upgrade at https://aquilax.ai to unlock AI-powered fixes.{Style.RESET_ALL}\n")
+                        return
+                    logger.error(f"AI prompt HTTP error for {rel_path}: {http_err}")
+                    print(f"  {Fore.RED}✗ API error{Style.RESET_ALL}  {Style.DIM}{http_err}{Style.RESET_ALL}\n")
+                    failed += 1
+                    continue
+                except Exception as e:
+                    logger.error(f"AI prompt error for {rel_path}: {e}")
+                    print(f"  {Fore.RED}✗ error{Style.RESET_ALL}  {Style.DIM}{e}{Style.RESET_ALL}\n")
+                    failed += 1
+                    continue
+
+                raw_response = ai_result.get('response', '')
+                if not raw_response.strip():
+                    print(f"  {Fore.YELLOW}↷ no response from AI — skipping{Style.RESET_ALL}\n")
+                    skipped += 1
+                    continue
+
+                # Parse response — full file or line replacement
+                cleaned = _strip_fences(raw_response)
+                if cleaned.startswith('FULL_FILE:'):
+                    fixed_content  = cleaned[len('FULL_FILE:'):].lstrip('\n')
+                    fixed_lines    = fixed_content.splitlines(keepends=True)
+                    full_file_mode = True
+                else:
+                    replacement    = cleaned
+                    fixed_lines    = list(original_lines)
+                    if has_lines:
+                        replace_chunk  = replacement.splitlines(keepends=True)
+                        # Ensure last line ends with newline
+                        if replace_chunk and not replace_chunk[-1].endswith('\n'):
+                            replace_chunk[-1] += '\n'
+                        fixed_lines[line_start - 1 : line_end] = replace_chunk
+                    else:
+                        # No line info — treat as full file
+                        fixed_lines    = replacement.splitlines(keepends=True)
+                    full_file_mode = False
+                    fixed_content  = ''.join(fixed_lines)
+
+                # Build diff
+                diff = _diff_lines(original_lines, fixed_lines, rel_path)
+
+                if args.dry_run:
+                    _print_diff(diff)
+                    print()
+                    print(f"  {Style.DIM}↷ dry-run — file not modified{Style.RESET_ALL}\n")
+                    skipped += 1
+                    continue
+
+                # Confirm — show diff, then erase it after user responds
+                if not args.auto:
+                    _print_diff(diff)
+                    print()
+                    # count lines printed: diff lines (or 1 for "no changes") + 1 blank
+                    diff_lines_count = (len(diff) if diff else 1) + 1
+                    try:
+                        choice = input(f"  {Style.BRIGHT}Apply fix?{Style.RESET_ALL}  {Style.DIM}[y/n/s=skip all]{Style.RESET_ALL}  ").strip().lower()
+                    except (EOFError, KeyboardInterrupt):
+                        choice = 'n'
+                    # Erase diff + blank line + prompt line from terminal
+                    for _ in range(diff_lines_count + 1):
+                        print('\033[1A\033[2K', end='', flush=True)
+                    if choice == 's':
+                        skip_all = True
+                        skipped += 1
+                        print(f"  {Style.DIM}↷ skipped all{Style.RESET_ALL}\n")
+                        continue
+                    elif choice == 'n':
+                        skipped += 1
+                        print(f"  {Style.DIM}↷ skipped{Style.RESET_ALL}\n")
+                        continue
+
+                # Write patched file
+                try:
+                    with open(file_path, 'w', encoding='utf-8') as dst:
+                        dst.write(fixed_content)
+                    finding['status']   = 'fixed'
+                    finding['fixed_at'] = fix_date
+                    applied += 1
+                    modified_files.add(rel_path)
+                    print(f"  {Fore.GREEN}✓ fix applied{Style.RESET_ALL}  {Style.DIM}{rel_path}{Style.RESET_ALL}\n")
+
+                    # Extract before/after snippet for report (up to 30 lines context)
+                    if has_lines:
+                        ctx_start = max(0, line_start - 1)
+                        ctx_end   = min(len(original_lines), line_end)
+                        before_snippet = ''.join(original_lines[ctx_start:ctx_end])
+                        # fixed_lines may have different length after replacement
+                        fixed_ctx_end = min(len(fixed_lines), ctx_start + (ctx_end - ctx_start) + 5)
+                        after_snippet = ''.join(fixed_lines[ctx_start:fixed_ctx_end])
+                    else:
+                        before_snippet = original_content[:2000]
+                        after_snippet  = fixed_content[:2000]
+
+                    applied_fixes.append({
+                        'file':           rel_path,
+                        'vuln':           vuln_title,
+                        'severity':       sev,
+                        'cwe':            finding.get('cwe', []),
+                        'message':        finding.get('message', ''),
+                        'recommendation': finding.get('recommendation', ''),
+                        'line_start':     line_start,
+                        'line_end':       line_end,
+                        'fixed_at':       fix_date,
+                        'diff':           '\n'.join(diff),
+                        'before_snippet': before_snippet,
+                        'after_snippet':  after_snippet,
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to write fix to {file_path}: {e}")
+                    print(f"  {Fore.RED}✗ failed to write{Style.RESET_ALL}  {Style.DIM}{e}{Style.RESET_ALL}\n")
+                    failed += 1
+
+            # ── Update aquilax_ai_findings.json ────────────────────────────────
+            if applied > 0 and not args.dry_run:
+                active     = [f for f in all_findings if f.get('status') != 'fixed']
+                new_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'UNKNOWN': 0}
+                for f in active:
+                    s = f.get('severity', 'UNKNOWN').upper()
+                    new_counts[s] = new_counts.get(s, 0) + 1
+                report['total_findings']  = len(active)
+                report['severity_counts'] = new_counts
+                report['last_updated']    = fix_date
+                try:
+                    with open(anal_path, 'w', encoding='utf-8') as _jf:
+                        json.dump(report, _jf, indent=2)
+                except Exception as e:
+                    logger.warning(f"Could not update findings JSON: {e}")
+
+            # ── Save fix.json (incremental merge) ──────────────────────────────
+            if applied_fixes and not args.dry_run:
+                existing_fix = {}
+                if os.path.exists(fix_path):
+                    try:
+                        with open(fix_path, 'r', encoding='utf-8') as _f:
+                            existing_fix = json.load(_f)
+                    except Exception:
+                        existing_fix = {}
+
+                _fixed_now       = {fx['file'] for fx in applied_fixes}
+                _retained_fixes  = [fx for fx in existing_fix.get('fixes', [])
+                                    if fx.get('file') not in _fixed_now]
+                _merged_fixes    = _retained_fixes + applied_fixes
+                _merged_fix_files = sorted(
+                    set(existing_fix.get('files_fixed', [])) | _fixed_now
+                )
+                fix_report = {
+                    'first_fixed':  existing_fix.get('first_fixed', fix_date),
+                    'last_updated': fix_date,
+                    'files_fixed':  _merged_fix_files,
+                    'total_fixes':  len(_merged_fixes),
+                    'fixes':        _merged_fixes,
+                }
+                try:
+                    with open(fix_path, 'w', encoding='utf-8') as _f:
+                        json.dump(fix_report, _f, indent=2)
+                except Exception as e:
+                    logger.warning(f"Could not write fix.json: {e}")
+                    fix_report = {'fixes': _merged_fixes,
+                                  'first_fixed': fix_date, 'last_updated': fix_date,
+                                  'files_fixed': list(_fixed_now), 'total_fixes': len(_merged_fixes)}
+
+                # ── Generate fix.md ────────────────────────────────────────────
+                def _fix_sev_badge(sev):
+                    return {'CRITICAL': '🔴 CRITICAL', 'HIGH': '🟠 HIGH',
+                            'MEDIUM': '🟡 MEDIUM', 'LOW': '🟢 LOW'}.get(sev.upper(), f'⚪ {sev}')
+
+                all_fix_entries = fix_report['fixes']
+                _fix_md = [
+                    '# AquilaX Fix Report',
+                    '',
+                    '> AI-Powered Security Fixes — [aquilax.ai](https://aquilax.ai)',
+                    '',
+                    '---',
+                    '',
+                    '## Overview',
+                    '',
+                    '| | |',
+                    '|---|---|',
+                    f'| **Last Updated** | {fix_date} |',
+                    f'| **First Fixed** | {fix_report["first_fixed"]} |',
+                    f'| **Total Fixes in Report** | {fix_report["total_fixes"]} |',
+                    f'| **Files Modified** | {", ".join(f"`{f}`" for f in fix_report["files_fixed"])} |',
+                    '',
+                    '---',
+                    '',
+                ]
+
+                # Severity breakdown of all fixes
+                _fx_sev_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'UNKNOWN': 0}
+                for _fx in all_fix_entries:
+                    _s = _fx.get('severity', 'UNKNOWN').upper()
+                    _fx_sev_counts[_s] = _fx_sev_counts.get(_s, 0) + 1
+
+                _fix_md += [
+                    '## Fixes by Severity',
+                    '',
+                    '| Severity | Count |',
+                    '|----------|------:|',
+                ]
+                for _sv in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']:
+                    _cnt = _fx_sev_counts.get(_sv, 0)
+                    if _cnt > 0:
+                        _fix_md.append(f'| {_fix_sev_badge(_sv)} | {_cnt} |')
+                _fix_md += ['', '---', '', '## Fixes Applied', '']
+
+                # Group by file
+                _files_order = []
+                _by_file = {}
+                for _fx in all_fix_entries:
+                    _fp = _fx.get('file', 'unknown')
+                    if _fp not in _by_file:
+                        _by_file[_fp] = []
+                        _files_order.append(_fp)
+                    _by_file[_fp].append(_fx)
+
+                _global_idx = 1
+                for _fp in _files_order:
+                    _fix_md += [f'### `{_fp}`', '']
+                    for _fx in _by_file[_fp]:
+                        _sev       = _fx.get('severity', 'UNKNOWN').upper()
+                        _ls        = _fx.get('line_start', 0)
+                        _le        = _fx.get('line_end',   0)
+                        _lines_str = f'{_ls}–{_le}' if _ls and _ls != _le else str(_ls or '—')
+                        _cwe_raw   = _fx.get('cwe', [])
+                        _cwe_str   = ', '.join(_cwe_raw) if isinstance(_cwe_raw, list) and _cwe_raw else '—'
+                        _lang      = _lang_hint(_fp)
+
+                        _fix_md += [
+                            f'#### {_global_idx}. {_fx.get("vuln", "N/A")}',
+                            '',
+                            '| Property | Value |',
+                            '|----------|-------|',
+                            f'| **File** | `{_fp}` |',
+                            f'| **Line(s)** | {_lines_str} |',
+                            f'| **Severity** | {_fix_sev_badge(_sev)} |',
+                            f'| **CWE** | {_cwe_str} |',
+                            f'| **Fixed At** | {_fx.get("fixed_at", "—")} |',
+                            '',
+                            '**Issue**',
+                            '',
+                            f'{_fx.get("message", "—")}',
+                            '',
+                        ]
+
+                        _before = _fx.get('before_snippet', '').rstrip()
+                        _after  = _fx.get('after_snippet',  '').rstrip()
+                        if _before or _after:
+                            if _before:
+                                _fix_md += [
+                                    '**Before**',
+                                    '',
+                                    f'```{_lang}',
+                                    _before,
+                                    '```',
+                                    '',
+                                ]
+                            if _after:
+                                _fix_md += [
+                                    '**After**',
+                                    '',
+                                    f'```{_lang}',
+                                    _after,
+                                    '```',
+                                    '',
+                                ]
+                        elif _fx.get('diff'):
+                            _fix_md += [
+                                '**Diff**',
+                                '',
+                                '```diff',
+                                _fx['diff'],
+                                '```',
+                                '',
+                            ]
+
+                        _fix_md += ['---', '']
+                        _global_idx += 1
+
+                _fix_md += [
+                    '> **Disclaimer:** Fixes were generated automatically by AquilaX AI. '
+                    'Review all changes before deploying to production.',
+                    '',
+                    f'*Report generated on {fix_date} by [AquilaX](https://aquilax.ai)*',
+                ]
+
+                md_fix_path = os.path.join(aquilax_dir, 'fix.md')
+                try:
+                    with open(md_fix_path, 'w', encoding='utf-8') as _mf:
+                        _mf.write('\n'.join(_fix_md))
+                except Exception as e:
+                    logger.warning(f"Could not write fix.md: {e}")
+                    md_fix_path = None
+
+            # ── Summary ────────────────────────────────────────────────────────
+            print(Style.BRIGHT + '─' * w + Style.RESET_ALL)
+            print(f"  {Fore.GREEN}✓ {applied} applied{Style.RESET_ALL}"
+                  f"  {Style.DIM}·{Style.RESET_ALL}"
+                  f"  {Style.DIM}↷ {skipped} skipped{Style.RESET_ALL}"
+                  + (f"  {Style.DIM}·{Style.RESET_ALL}  {Fore.RED}✗ {failed} failed{Style.RESET_ALL}" if failed else ""))
+            if modified_files:
+                print(f"  {Style.DIM}files  {', '.join(sorted(modified_files))}{Style.RESET_ALL}")
+            print(Style.BRIGHT + '─' * w + Style.RESET_ALL)
+            if applied > 0 and not args.dry_run:
+                print(f"  {Style.DIM}report  {os.path.relpath(md_fix_path)}{Style.RESET_ALL}")
+                print(f"  {Style.DIM}data    {os.path.relpath(fix_path)}{Style.RESET_ALL}")
+                print()
+                print(f"  {Style.DIM}run 'aquilax analyze {args.target}' to verify remaining issues{Style.RESET_ALL}")
+            print()
 
         elif args.command == 'get':
             if args.get_command == 'orgs':

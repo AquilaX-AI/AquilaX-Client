@@ -126,6 +126,21 @@ class APIClient:
         response.raise_for_status()
         return response.json()
 
+    def ai_prompt(self, org_id, group_id, user_prompt, system_prompt=None):
+        headers = self.headers.copy()
+        headers['Content-Type'] = 'application/json'
+        data = {'user_prompt': user_prompt}
+        if system_prompt:
+            data['system_prompt'] = system_prompt
+        response = requests.post(
+            f"{self.base_url}/v2/ai/prompt?org={org_id}&group={group_id}",
+            headers=headers,
+            json=data,
+            verify=self.verify_host
+        )
+        response.raise_for_status()
+        return response.json()
+
     def get_group_policy(self, org_id, group_id):
         headers = self.headers.copy()
         response = requests.get(f"{self.base_url}/v2/organization/{org_id}/groups", headers=headers, verify=self.verify_host)
