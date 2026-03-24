@@ -844,8 +844,6 @@ def main():
                             else:
                                 print(f"{Fore.GREEN}No Vulnerabilities Found{Style.RESET_ALL}")
 
-                            print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, args.fail_on_vulns, status)
-                            
                             # Save SARIF results for CI/CD artifact upload
                             try:
                                 print("\nGenerating SARIF report...")
@@ -858,7 +856,9 @@ def main():
                             except Exception as e:
                                 logger.error(f"Failed to generate SARIF report: {str(e)}")
                                 print(f"{Fore.YELLOW}Warning: Failed to generate SARIF report: {str(e)}{Style.RESET_ALL}")
-                            
+
+                            print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, args.fail_on_vulns, status)
+
                             break
 
                 else:
@@ -912,8 +912,6 @@ def main():
                     else:
                         print(f"{Fore.GREEN}No vulnerabilities found.{Style.RESET_ALL}")
 
-                    print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, args.fail_on_vulns, status)
-
                 # Save SARIF results for CI/CD artifact upload
                 try:
                     print("\nGenerating SARIF report...")
@@ -926,6 +924,8 @@ def main():
                 except Exception as e:
                     logger.error(f"Failed to generate SARIF report: {str(e)}")
                     print(f"{Fore.YELLOW}Warning: Failed to generate SARIF report: {str(e)}{Style.RESET_ALL}")
+
+                print_thresholds_and_fail_check(severity_counts, total_findings, client, org_id, group_id, args.fail_on_vulns, status)
 
                 try:
                     dashboard_link = f"https://aquilax.ai/app/dashboard/scan-v2/{scan_id}/?org={org_id}&group={group_id}"

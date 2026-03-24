@@ -60,10 +60,10 @@ Scan local files and directories instantly — no Git repository required:
 - **Single File** - Analyze one file at a time (`aquilax analyze app.py`)
 - **Entire Project** - Scan all code files recursively (`aquilax analyze .`)
 - **Incremental Reports** - Results are merged into a persistent report; re-scanning a file updates only that file's findings
-- **AI-Powered Findings** - Each finding includes severity, CWE references, description, and remediation guidance
+- **Securitron-Powered Findings** - Each finding includes severity, CWE references, description, and remediation guidance
 - **Dual Output** - Generates a professional Markdown report and a structured JSON file in `.aquilax/`
 
-### 🔧 AI-Powered Fix
+### 🔧 Securitron-Powered Fix
 Automatically fix vulnerabilities found by `analyze` using AI:
 
 - **Single File** - Fix one file at a time (`aquilax fix app.py`)
@@ -415,9 +415,9 @@ Each finding includes:
 
 ---
 
-#### 🔧 AI-Powered Fix
+#### 🔧 Securitron-Powered Fix
 
-Automatically fix vulnerabilities identified by `analyze`. The AI receives the affected lines plus surrounding context to generate precise, targeted fixes.
+Automatically fix vulnerabilities identified by `analyze`. Securitron receives the affected lines plus surrounding context to generate precise, targeted fixes.
 
 > **Requires:** Run `aquilax analyze <path>` first to generate findings.
 
@@ -795,7 +795,7 @@ Need help? We're here for you!
 - [x] **SARIF Export** - Export CI/CD scan results in SARIF format
 - [x] **Local Code Analysis** - Scan local files and directories with AI-powered detection
 - [x] **Incremental Reports** - Persistent, cumulative security reports with per-file merge
-- [x] **AI-Powered Fix** - Automatically fix vulnerabilities with `aquilax fix`
+- [x] **Securitron-Powered Fix** - Automatically fix vulnerabilities with `aquilax fix`
 - [ ] **IDE Plugins** - Use AquilaX directly in VS Code and IntelliJ
 - [ ] **Instant Notifications** - Get alerts via Slack, Teams, or email
 - [ ] **Advanced Filters** - Filter results by severity, type, or file
@@ -806,8 +806,8 @@ Need help? We're here for you!
 
 ✅ **Complete Security Coverage** - Multiple specialized scanners in one tool
 ✅ **Local + Remote** - Scan local files/directories or remote Git repositories
-✅ **AI-Powered Analysis** - Instant, intelligent findings with remediation guidance
-✅ **AI-Powered Fix** - Automatically fix vulnerabilities with a single command
+✅ **Securitron-Powered Analysis** - Instant, intelligent findings with remediation guidance
+✅ **Securitron-Powered Fix** - Automatically fix vulnerabilities with a single command
 ✅ **Incremental Reports** - Persistent reports that merge across scan runs
 ✅ **Fast & Efficient** - Quick scans without slowing down your workflow
 ✅ **Automation Ready** - Perfect for CI/CD pipelines
