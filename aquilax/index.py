@@ -1234,11 +1234,8 @@ def main():
                             f'| **Line(s)** | {lines} |',
                             f'| **Severity** | {_sev_badge(sev)} |',
                             f'| **Confidence** | {finding.get("confidence", "N/A")} |',
-                            f'| **Impact** | {finding.get("impact", "N/A")} |',
-                            f'| **Likelihood** | {finding.get("likelihood", "N/A")} |',
                             f'| **CWE** | {cwe_ids} |',
                             f'| **CVEs** | {cves} |',
-                            f'| **Rule ID** | {finding.get("rule_id", "N/A")} |',
                             '',
                             '**Description**',
                             '',
@@ -1441,7 +1438,9 @@ def main():
             FIX_SYSTEM_PROMPT = (
                 "You are a security code fixer. Fix the exact vulnerability described. "
                 "Return ONLY the corrected replacement code — no explanations, no markdown "
-                "fences, no added comments unless they were in the original code."
+                "fences, no added comments unless they were in the original code. "
+                "Preserve the exact indentation and whitespace of every line in the original code. "
+                "Never change the indentation level of any line unless the fix itself requires it."
             )
 
             def _strip_fences(text):
@@ -1609,6 +1608,19 @@ def main():
                         # Ensure last line ends with newline
                         if replace_chunk and not replace_chunk[-1].endswith('\n'):
                             replace_chunk[-1] += '\n'
+                        # Preserve original indentation — AI often returns replacement at indent 0
+                        orig_line   = original_lines[line_start - 1] if line_start - 1 < len(original_lines) else ''
+                        orig_indent = len(orig_line) - len(orig_line.lstrip())
+                        if replace_chunk:
+                            first_repl  = replace_chunk[0]
+                            repl_indent = len(first_repl) - len(first_repl.lstrip())
+                            indent_diff = orig_indent - repl_indent
+                            if indent_diff > 0:
+                                pad = ' ' * indent_diff
+                                replace_chunk = [
+                                    pad + line if line.strip() else line
+                                    for line in replace_chunk
+                                ]
                         fixed_lines[line_start - 1 : line_end] = replace_chunk
                     else:
                         # No line info — treat as full file

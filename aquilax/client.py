@@ -4,6 +4,7 @@ from .logger import logger
 import json
 import os
 import re
+import time
 
 CONFIG_PATH = os.path.expanduser("~/.aquilax/config.json")
 
@@ -113,18 +114,50 @@ class APIClient:
         # Assuming profile returns a list of orgs under 'organizations' key; adjust based on actual API response
         return {'orgs': profile_data.get('organizations', [])}
 
-    def scan_code(self, org_id, group_id, code):
+    def scan_code(self, org_id, group_id, code, poll_interval=2, timeout=120):
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
-        data = {'code': code}
         response = requests.post(
             f"{self.base_url}/v2/code/scan?org={org_id}&group={group_id}",
             headers=headers,
-            json=data,
+            json={'code': '\n'.join(f'{i+1}. {line}' for i, line in enumerate(code.splitlines()))},
+            verify=self.verify_host
+        )
+        response.raise_for_status()
+        scan_id = response.json().get('scan_id')
+
+        elapsed = 0
+        while elapsed < timeout:
+            result = self._get_code_scan_result(org_id, group_id, scan_id)
+            status = result.get('status', '')
+            if status == 'COMPLETED':
+                return self._normalize_code_findings(result.get('findings', []))
+            if status == 'FAILED':
+                raise RuntimeError(f"Code scan failed: {result.get('status_message', 'unknown error')}")
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+        raise TimeoutError(f"Code scan {scan_id} did not complete within {timeout}s")
+
+    def _get_code_scan_result(self, org_id, group_id, scan_id):
+        headers = self.headers.copy()
+        response = requests.get(
+            f"{self.base_url}/v2/code/scan/{scan_id}?org={org_id}&group={group_id}",
+            headers=headers,
             verify=self.verify_host
         )
         response.raise_for_status()
         return response.json()
+
+    def _normalize_code_findings(self, findings):
+        for f in findings:
+            if 'line_start' in f:
+                f.setdefault('affected_code_line_start', f['line_start'])
+            if 'line_end' in f:
+                f.setdefault('affected_code_line_end', f['line_end'])
+            if 'confidence' in f and 'severity' not in f:
+                f['severity'] = f['confidence']
+        return findings
 
     def ai_prompt(self, org_id, group_id, user_prompt, system_prompt=None):
         headers = self.headers.copy()
