@@ -262,7 +262,9 @@ aquilax ci-scan <git_uri> [options]
 |--------|-------------|---------|
 | `--org-id` | Organization ID (overrides default) | From config |
 | `--group-id` | Group ID (overrides default) | From config |
-| `--branch` | Git branch to scan | `main` |
+| `--branch` | Git branch to scan | `main` (the merge request's source branch with `--diff`) |
+| `--diff` | In a merge/pull request pipeline, scan only the files the request changed | Disabled |
+| `--diff-base` | Scan only the files changed since this commit or branch | None |
 | `--sync` | Enable real-time monitoring | Disabled |
 | `--fail-on-vulns` | Fail pipeline if any vulnerabilities found | Disabled |
 | `--format` | Output format (`json` or `table`) | `table` |
@@ -303,6 +305,33 @@ security_scan:
     aquilax login ${{ secrets.AQUILAX_TOKEN }}
     aquilax ci-scan ${{ github.repository }} --fail-on-vulns
 ```
+
+**Merge Request / Pull Request Scans (diff scans):**
+
+With `--diff`, a merge/pull request pipeline scans only the files the request added or changed,
+instead of the whole branch. The CLI reads the target branch (or, on GitLab, the exact base commit)
+from the CI environment on GitLab CI, GitHub Actions, Azure Pipelines and Bitbucket Pipelines. On
+other CI systems, pass the base yourself with `--diff-base main`. Outside a merge/pull request
+pipeline, `--diff` runs a normal full scan, so the same job works for both.
+
+```yaml
+# GitLab CI
+aquilax_mr_scan:
+  script:
+    - pip install aquilax
+    - aquilax login "$AQUILAX_TOKEN"
+    - aquilax ci-scan "$CI_PROJECT_URL.git" --diff --fail-on-vulns
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+```
+
+Good to know:
+- `--fail-on-vulns` and the policy thresholds then apply only to issues in the changed files.
+- Diff scans are labelled in the dashboard and don't replace the project's latest full scan in
+  dashboards and reports. Keep a scheduled or default-branch full scan for that.
+- Repository-wide checks (Git compliance, AI-generated code history, DAST) and the SBOM are skipped.
+- If the base can't be found in the repository, the whole branch is scanned and the CLI says so.
+- Pull requests from forks are not supported yet: the fork's branch isn't in the scanned repository.
 
 ---
 

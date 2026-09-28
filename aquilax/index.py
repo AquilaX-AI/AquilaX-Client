@@ -383,6 +383,46 @@ def print_thresholds_and_fail_check(severity_counts, total_findings, client, org
         print("Vulnerabilities found. Failing the pipeline.")
         sys.exit(1)
 
+# Same rule the server enforces: a commit SHA or a branch name, never a git option or range.
+_DIFF_BASE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,254}")
+
+def is_valid_diff_base(ref):
+    return (isinstance(ref, str) and bool(_DIFF_BASE_PATTERN.fullmatch(ref))
+            and ".." not in ref and "//" not in ref
+            and not ref.endswith(("/", ".", ".lock")))
+
+def _branch_name(ref):
+    if ref and ref.startswith("refs/heads/"):
+        return ref[len("refs/heads/"):]
+    return ref
+
+def detect_merge_request(env=None):
+    """(source branch, diff base) of the merge/pull request this CI job runs for, or None."""
+    env = os.environ if env is None else env
+    if env.get("CI_MERGE_REQUEST_DIFF_BASE_SHA"):  # GitLab
+        return env.get("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"), env["CI_MERGE_REQUEST_DIFF_BASE_SHA"]
+    if env.get("GITHUB_BASE_REF"):  # GitHub Actions, pull_request events only
+        return env.get("GITHUB_HEAD_REF"), env["GITHUB_BASE_REF"]
+    if env.get("SYSTEM_PULLREQUEST_TARGETBRANCH"):  # Azure Pipelines
+        return (_branch_name(env.get("SYSTEM_PULLREQUEST_SOURCEBRANCH")),
+                _branch_name(env["SYSTEM_PULLREQUEST_TARGETBRANCH"]))
+    if env.get("BITBUCKET_PR_DESTINATION_BRANCH"):  # Bitbucket Pipelines
+        return env.get("BITBUCKET_BRANCH"), env["BITBUCKET_PR_DESTINATION_BRANCH"]
+    return None
+
+def print_diff_summary(scan_details, requested_base):
+    """Tell the user what the diff scan covered, or why the whole branch was scanned instead."""
+    if scan_details.get('scan_mode') != 'diff':
+        print(f"{Fore.YELLOW}Warning: the server doesn't support diff scans yet, so the whole branch was scanned.{Style.RESET_ALL}")
+        return
+    diff = (scan_details.get('metadata') or {}).get('diff') or {}
+    if diff.get('fallback'):
+        reason = diff.get('fallback_reason') or 'the diff base could not be resolved'
+        print(f"{Fore.YELLOW}Warning: {reason}, so the whole branch was scanned.{Style.RESET_ALL}")
+    elif 'changed_files_count' in diff:
+        base = (diff.get('merge_base') or requested_base)[:12]
+        print(f"\nDiff scan: {diff['changed_files_count']} changed file(s) compared to {base}")
+
 def _print_welcome(version):
     W  = Style.BRIGHT + Fore.WHITE
     C  = Style.BRIGHT + Fore.CYAN
@@ -474,7 +514,9 @@ def main():
     ci_parser.add_argument('--org-id', help='Organization ID')
     ci_parser.add_argument('--group-id', help='Group ID')
     ci_parser.add_argument('--fail-on-vulns', action='store_true', help='Fail the pipeline if vulnerabilities are found')
-    ci_parser.add_argument('--branch', default='main', help='Git branch to scan (default: main)')
+    ci_parser.add_argument('--branch', help="Git branch to scan (default: main, or the merge request's source branch with --diff)")
+    ci_parser.add_argument('--diff', action='store_true', help='In a merge/pull request pipeline, scan only the files the request changed (GitLab, GitHub, Azure DevOps, Bitbucket)')
+    ci_parser.add_argument('--diff-base', help='Scan only the files changed since this commit or branch (use with CI systems --diff does not detect)')
     ci_parser.add_argument('--sync', action='store_true', help='Enable sync mode to fetch scan results periodically') 
     ci_parser.add_argument('--output-dir', default='.', help='Directory to save the PDF report')
     ci_parser.add_argument('--save-pdf', action='store_true', help='Save the PDF report locally')
@@ -749,15 +791,35 @@ def main():
                 print("Group ID is not set. Please provide it using --group-id or set a default using --set-group.")
                 sys.exit(0)
 
+            branch = args.branch
+            diff_base = None
+            if args.diff_base:
+                if not is_valid_diff_base(args.diff_base):
+                    ci_parser.error("--diff-base must be a commit SHA or a branch name")
+                diff_base = args.diff_base
+            elif args.diff:
+                merge_request = detect_merge_request()
+                if not merge_request:
+                    print("Not a merge/pull request pipeline, running a full scan.")
+                elif not is_valid_diff_base(merge_request[1]):
+                    print(f"{Fore.YELLOW}Warning: the merge request's target '{merge_request[1]}' can't be used as a diff base, running a full scan.{Style.RESET_ALL}")
+                else:
+                    branch = branch or merge_request[0]
+                    diff_base = merge_request[1]
+            branch = branch or 'main'
+
             # Debugging
-            print(f"Branch: {args.branch}")
+            print(f"Branch: {branch}")
+            if diff_base:
+                print(f"Diff scan against: {diff_base}")
 
             try:
                 scan_response = client.start_scan(
                     org_id,
                     group_id,
                     args.git,
-                    args.branch
+                    branch,
+                    diff_base=diff_base
                 )
             except requests.RequestException as req_err:
                 logger.error(f"API request failed: {str(req_err)}")
@@ -830,6 +892,9 @@ def main():
                                 print(f"{Fore.RED}Warning: Could not fetch final details.{Style.RESET_ALL}")
                                 return
 
+                            if diff_base:
+                                print_diff_summary(scan_details, diff_base)
+
                             all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
                             if all_findings:
@@ -899,6 +964,9 @@ def main():
                         logger.error(f"Final fetch failed: {str(e)}")
                         print(f"{Fore.RED}Warning: Could not fetch final details.{Style.RESET_ALL}")
                         return
+
+                    if diff_base:
+                        print_diff_summary(scan_details, diff_base)
 
                     all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
