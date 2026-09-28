@@ -410,18 +410,25 @@ def detect_merge_request(env=None):
         return env.get("BITBUCKET_BRANCH"), env["BITBUCKET_PR_DESTINATION_BRANCH"]
     return None
 
-def print_diff_summary(scan_details, requested_base):
+def print_diff_summary(scan_details, requested_base, since_last_scan=False):
     """Tell the user what the diff scan covered, or why the whole branch was scanned instead."""
+    if since_last_scan and not scan_details.get('diff_since_last_scan'):
+        print(f"{Fore.YELLOW}Warning: the server doesn't support --diff-since-last-scan yet, so the whole branch was scanned.{Style.RESET_ALL}")
+        return
     if scan_details.get('scan_mode') != 'diff':
-        print(f"{Fore.YELLOW}Warning: the server doesn't support diff scans yet, so the whole branch was scanned.{Style.RESET_ALL}")
+        if since_last_scan:
+            print("\nNo earlier completed scan of this branch, so the whole branch was scanned. The next scan covers only new changes.")
+        else:
+            print(f"{Fore.YELLOW}Warning: the server doesn't support diff scans yet, so the whole branch was scanned.{Style.RESET_ALL}")
         return
     diff = (scan_details.get('metadata') or {}).get('diff') or {}
     if diff.get('fallback'):
         reason = diff.get('fallback_reason') or 'the diff base could not be resolved'
         print(f"{Fore.YELLOW}Warning: {reason}, so the whole branch was scanned.{Style.RESET_ALL}")
     elif 'changed_files_count' in diff:
-        base = (diff.get('merge_base') or requested_base)[:12]
-        print(f"\nDiff scan: {diff['changed_files_count']} changed file(s) compared to {base}")
+        base = (diff.get('merge_base') or requested_base or scan_details.get('diff_base') or '')[:12]
+        since = f"since the last scan ({base})" if since_last_scan else f"compared to {base}"
+        print(f"\nDiff scan: {diff['changed_files_count']} changed file(s) {since}")
 
 def _print_welcome(version):
     W  = Style.BRIGHT + Fore.WHITE
@@ -516,7 +523,9 @@ def main():
     ci_parser.add_argument('--fail-on-vulns', action='store_true', help='Fail the pipeline if vulnerabilities are found')
     ci_parser.add_argument('--branch', help="Git branch to scan (default: main, or the merge request's source branch with --diff)")
     ci_parser.add_argument('--diff', action='store_true', help='In a merge/pull request pipeline, scan only the files the request changed (GitLab, GitHub, Azure DevOps, Bitbucket)')
-    ci_parser.add_argument('--diff-base', help='Scan only the files changed since this commit or branch (use with CI systems --diff does not detect)')
+    ci_diff_base = ci_parser.add_mutually_exclusive_group()
+    ci_diff_base.add_argument('--diff-base', help='Scan only the files changed since this commit or branch (use with CI systems --diff does not detect)')
+    ci_diff_base.add_argument('--diff-since-last-scan', action='store_true', help="Scan only the files changed since this branch's last completed scan (outside merge requests when combined with --diff; the first scan of a branch is a full scan)")
     ci_parser.add_argument('--sync', action='store_true', help='Enable sync mode to fetch scan results periodically') 
     ci_parser.add_argument('--output-dir', default='.', help='Directory to save the PDF report')
     ci_parser.add_argument('--save-pdf', action='store_true', help='Save the PDF report locally')
@@ -793,6 +802,10 @@ def main():
 
             branch = args.branch
             diff_base = None
+            since_last_scan = False
+            fallback_note = "running a full scan"
+            if args.diff_since_last_scan:
+                fallback_note = "scanning the changes since the last scan"
             if args.diff_base:
                 if not is_valid_diff_base(args.diff_base):
                     ci_parser.error("--diff-base must be a commit SHA or a branch name")
@@ -800,18 +813,22 @@ def main():
             elif args.diff:
                 merge_request = detect_merge_request()
                 if not merge_request:
-                    print("Not a merge/pull request pipeline, running a full scan.")
+                    print(f"Not a merge/pull request pipeline, {fallback_note}.")
                 elif not is_valid_diff_base(merge_request[1]):
-                    print(f"{Fore.YELLOW}Warning: the merge request's target '{merge_request[1]}' can't be used as a diff base, running a full scan.{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}Warning: the merge request's target '{merge_request[1]}' can't be used as a diff base, {fallback_note}.{Style.RESET_ALL}")
                 else:
                     branch = branch or merge_request[0]
                     diff_base = merge_request[1]
+            if not diff_base and args.diff_since_last_scan:
+                since_last_scan = True
             branch = branch or 'main'
 
             # Debugging
             print(f"Branch: {branch}")
             if diff_base:
                 print(f"Diff scan against: {diff_base}")
+            elif since_last_scan:
+                print(f"Diff scan against: the last completed scan of {branch}")
 
             try:
                 scan_response = client.start_scan(
@@ -819,7 +836,8 @@ def main():
                     group_id,
                     args.git,
                     branch,
-                    diff_base=diff_base
+                    diff_base=diff_base,
+                    diff_since_last_scan=since_last_scan
                 )
             except requests.RequestException as req_err:
                 logger.error(f"API request failed: {str(req_err)}")
@@ -892,8 +910,8 @@ def main():
                                 print(f"{Fore.RED}Warning: Could not fetch final details.{Style.RESET_ALL}")
                                 return
 
-                            if diff_base:
-                                print_diff_summary(scan_details, diff_base)
+                            if diff_base or since_last_scan:
+                                print_diff_summary(scan_details, diff_base, since_last_scan)
 
                             all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 
@@ -965,8 +983,8 @@ def main():
                         print(f"{Fore.RED}Warning: Could not fetch final details.{Style.RESET_ALL}")
                         return
 
-                    if diff_base:
-                        print_diff_summary(scan_details, diff_base)
+                    if diff_base or since_last_scan:
+                        print_diff_summary(scan_details, diff_base, since_last_scan)
 
                     all_findings, severity_counts, total_findings = parse_and_display_findings(scan_details, org_id, group_id)
 

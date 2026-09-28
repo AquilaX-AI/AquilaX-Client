@@ -77,7 +77,7 @@ class APIClient:
             print("Please run 'aquilax login <token>' to set your API token.")
             print("If you don't have an API token, please visit https://aquilax.ai to generate one.")
 
-    def start_scan(self, org_id, group_id, git_uri, branch, diff_base=None):
+    def start_scan(self, org_id, group_id, git_uri, branch, diff_base=None, diff_since_last_scan=False):
         # Normalize Azure DevOps URLs (remove embedded username)
         normalized_git_uri = normalize_azure_url(git_uri)
 
@@ -88,6 +88,8 @@ class APIClient:
         }
         if diff_base:
             data['diff_base'] = diff_base
+        elif diff_since_last_scan:
+            data['diff_since_last_scan'] = True
         headers = self.headers.copy()
         headers['Content-Type'] = 'application/json'
 

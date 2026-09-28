@@ -265,6 +265,7 @@ aquilax ci-scan <git_uri> [options]
 | `--branch` | Git branch to scan | `main` (the merge request's source branch with `--diff`) |
 | `--diff` | In a merge/pull request pipeline, scan only the files the request changed | Disabled |
 | `--diff-base` | Scan only the files changed since this commit or branch | None |
+| `--diff-since-last-scan` | Scan only the files changed since the branch's last completed scan | Disabled |
 | `--sync` | Enable real-time monitoring | Disabled |
 | `--fail-on-vulns` | Fail pipeline if any vulnerabilities found | Disabled |
 | `--format` | Output format (`json` or `table`) | `table` |
@@ -329,9 +330,34 @@ Good to know:
 - `--fail-on-vulns` and the policy thresholds then apply only to issues in the changed files.
 - Diff scans are labelled in the dashboard and don't replace the project's latest full scan in
   dashboards and reports. Keep a scheduled or default-branch full scan for that.
-- Repository-wide checks (Git compliance, AI-generated code history, DAST) and the SBOM are skipped.
+- Repository-wide checks (Git compliance, AI-generated code history, DAST, Securitron AI analysis) and the SBOM are skipped.
 - If the base can't be found in the repository, the whole branch is scanned and the CLI says so.
 - Pull requests from forks are not supported yet: the fork's branch isn't in the scanned repository.
+
+**Push Scans (only what changed since the last scan):**
+
+With `--diff-since-last-scan`, a scan covers only the files changed on the branch since its last
+completed scan. The server remembers which commit each scan covered, so this works on any CI system
+and nothing is skipped when a pipeline doesn't run. The first scan of a branch is a full scan.
+
+```bash
+aquilax ci-scan https://github.com/myorg/myrepo --branch main --diff-since-last-scan
+```
+
+Combine it with `--diff` to use one job for everything: merge/pull requests are compared with where
+they started, every other pipeline with the last scan.
+
+```yaml
+# GitLab CI
+aquilax_scan:
+  script:
+    - pip install aquilax
+    - aquilax login "$AQUILAX_TOKEN"
+    - aquilax ci-scan "$CI_PROJECT_URL.git" --branch "$CI_COMMIT_REF_NAME" --diff --diff-since-last-scan
+```
+
+As with all diff scans, the project's dashboards keep showing its latest full scan, so run a full
+scan regularly (for example a nightly scheduled pipeline without these flags).
 
 ---
 
