@@ -293,8 +293,8 @@ security_scan:
   stage: test
   script:
     - pip install aquilax
-    - aquilax login $AQUILAX_TOKEN
-    - aquilax ci-scan $CI_REPOSITORY_URL --branch $CI_COMMIT_BRANCH --fail-on-vulns
+    - aquilax login "$AQUILAX_TOKEN"
+    - aquilax ci-scan "$CI_PROJECT_URL.git" --branch "$CI_COMMIT_REF_NAME" --fail-on-vulns
 ```
 
 **GitHub Actions Example:**
